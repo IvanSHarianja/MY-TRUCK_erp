@@ -6,12 +6,14 @@ use App\Models\BusinessUnit;
 use App\Services\Accounting\IncomeStatementService;
 use Filament\Facades\Filament;
 use Filament\Widgets\ChartWidget;
+use Filament\Widgets\Concerns\InteractsWithPageFilters;
+use Illuminate\Support\Carbon;
 
 class RevenueByBusinessUnitWidget extends ChartWidget
 {
-    protected ?string $heading = 'Pendapatan per Lini Bisnis';
+    use InteractsWithPageFilters;
 
-    protected ?string $description = 'YTD tahun fiscal aktif';
+    protected ?string $heading = 'Pendapatan per Lini Bisnis';
 
     protected int|string|array $columnSpan = [
         'default' => 'full',
@@ -19,17 +21,6 @@ class RevenueByBusinessUnitWidget extends ChartWidget
     ];
 
     protected ?string $maxHeight = '260px';
-
-    public ?string $filter = 'ytd';
-
-    protected function getFilters(): ?array
-    {
-        return [
-            'ytd'     => 'Year-to-Date',
-            'last_3'  => '3 Bulan Terakhir',
-            'last_12' => '12 Bulan Terakhir',
-        ];
-    }
 
     protected function getData(): array
     {
@@ -39,31 +30,47 @@ class RevenueByBusinessUnitWidget extends ChartWidget
             return ['datasets' => [], 'labels' => []];
         }
 
-        $year = (int) ($tenant->fiscal_year ?? now()->year);
+        $companyId = $tenant->getKey();
 
-        $units = BusinessUnit::where('company_id', $tenant->getKey())
+        // Parse filter tanggal
+        $startDate = Carbon::parse($this->filters['startDate'] ?? now()->startOfYear());
+        $endDate   = Carbon::parse($this->filters['endDate'] ?? now());
+
+        $endYear  = $endDate->year;
+        $endMonth = $endDate->month;
+
+        $beforeStart      = $startDate->copy()->startOfMonth()->subMonth();
+        $beforeStartYear  = $beforeStart->year;
+        $beforeStartMonth = $beforeStart->month;
+
+        $units = BusinessUnit::where('company_id', $companyId)
             ->where('is_active', true)
             ->orderBy('code')
             ->get();
 
         $is = app(IncomeStatementService::class);
 
-        $labels   = [];
-        $data     = [];
-        $colors   = [];
+        $labels = [];
+        $data   = [];
+        $colors = [];
 
         foreach ($units as $unit) {
             $labels[] = $unit->name;
 
-            $revenue = $is->getTotalRevenue($tenant->getKey(), $year, (int) now()->month, $unit->id);
-            $data[]  = (float) $revenue;
+            $endRevenue   = $is->getTotalRevenue($companyId, $endYear, $endMonth, $unit->id);
+            $startRevenue = $is->getTotalRevenue($companyId, $beforeStartYear, $beforeStartMonth, $unit->id);
+            $revenue      = $endRevenue - $startRevenue;
+
+            $data[]   = (float) max(0, $revenue);
             $colors[] = $unit->color;
         }
 
         // Tambah revenue tanpa lini (business_unit_id NULL)
-        $allRevenue = $is->getTotalRevenue($tenant->getKey(), $year, (int) now()->month);
-        $unitsSum   = array_sum($data);
-        $tanpaLini  = $allRevenue - $unitsSum;
+        $allEndRevenue   = $is->getTotalRevenue($companyId, $endYear, $endMonth);
+        $allStartRevenue = $is->getTotalRevenue($companyId, $beforeStartYear, $beforeStartMonth);
+        $allRevenue      = $allEndRevenue - $allStartRevenue;
+        $unitsSum        = array_sum($data);
+        $tanpaLini       = $allRevenue - $unitsSum;
 
         if ($tanpaLini > 0.01) {
             $labels[] = '(Tanpa Lini)';

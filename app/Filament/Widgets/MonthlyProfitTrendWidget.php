@@ -5,13 +5,14 @@ namespace App\Filament\Widgets;
 use App\Services\Accounting\IncomeStatementService;
 use Filament\Facades\Filament;
 use Filament\Widgets\ChartWidget;
+use Filament\Widgets\Concerns\InteractsWithPageFilters;
 use Illuminate\Support\Carbon;
 
 class MonthlyProfitTrendWidget extends ChartWidget
 {
-    protected ?string $heading = 'Tren Laba Bersih per Bulan';
+    use InteractsWithPageFilters;
 
-    protected ?string $description = '12 bulan terakhir';
+    protected ?string $heading = 'Tren Laba Bersih per Bulan';
 
     protected int|string|array $columnSpan = [
         'default' => 'full',
@@ -28,26 +29,33 @@ class MonthlyProfitTrendWidget extends ChartWidget
             return ['datasets' => [], 'labels' => []];
         }
 
+        $companyId = $tenant->getKey();
+
         $is = app(IncomeStatementService::class);
 
-        $labels      = [];
-        $pendapatan  = [];
-        $laba        = [];
+        // Parse filter tanggal
+        $startDate = Carbon::parse($this->filters['startDate'] ?? now()->subMonths(11)->startOfMonth());
+        $endDate   = Carbon::parse($this->filters['endDate'] ?? now());
 
-        // 12 bulan terakhir (sampai bulan ini)
-        $cursor = Carbon::now()->startOfMonth()->subMonths(11);
+        $labels     = [];
+        $pendapatan = [];
+        $laba       = [];
 
-        for ($i = 0; $i < 12; $i++) {
+        // Loop per bulan dalam rentang tanggal yang dipilih
+        $cursor    = $startDate->copy()->startOfMonth();
+        $endOfLoop = $endDate->copy()->startOfMonth();
+
+        while ($cursor->lte($endOfLoop)) {
             $labels[] = $cursor->translatedFormat('M Y');
 
-            // Hitung L/R untuk bulan tersebut saja (delta antara cumulative s.d bulan ini dan s.d bulan lalu)
-            $thisMonth = $is->getReport($tenant->getKey(), $cursor->year, $cursor->month);
+            // Hitung L/R untuk bulan ini saja (delta kumulatif)
+            $thisMonth = $is->getReport($companyId, $cursor->year, $cursor->month);
 
-            $prev = $cursor->copy()->subMonth();
-            $prevMonth = $is->getReport($tenant->getKey(), $prev->year, $prev->month);
+            $prev      = $cursor->copy()->subMonth();
+            $prevMonth = $is->getReport($companyId, $prev->year, $prev->month);
 
             $monthRevenue = $thisMonth['totalPendapatan'] - $prevMonth['totalPendapatan'];
-            $monthLaba    = $thisMonth['labaBersih']    - $prevMonth['labaBersih'];
+            $monthLaba    = $thisMonth['labaBersih'] - $prevMonth['labaBersih'];
 
             $pendapatan[] = (float) max(0, $monthRevenue);
             $laba[]       = (float) $monthLaba;
