@@ -25,42 +25,47 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           command_timeout: 20m
+          # Seluruh deploy dijalankan sebagai root (sudo bash) karena direktori
+          # web ber-permission 700 milik user `www` — user SSH biasa tidak bisa
+          # masuk ke dalamnya. Di akhir kepemilikan dikembalikan ke www:www.
           script: |
+            sudo bash <<'DEPLOY'
             set -e
+            export COMPOSER_ALLOW_SUPERUSER=1
             APP_DIR=/www/wwwroot/mytruck.siproper.cloud
             PHP=/www/server/php/84/bin/php
 
-            echo "==> [1/8] Tandai direktori aman untuk git (root)"
-            sudo git config --global --add safe.directory "$APP_DIR"
-
+            echo "==> [1/8] Tandai direktori aman untuk git"
+            git config --global --add safe.directory "$APP_DIR"
             cd "$APP_DIR"
 
             echo "==> [2/8] Tarik kode terbaru dari origin/main"
-            sudo git fetch --all --prune
-            sudo git reset --hard origin/main
+            git fetch --all --prune
+            git reset --hard origin/main
 
             echo "==> [3/8] Composer install (production)"
-            sudo composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+            composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
             echo "==> [4/8] Build asset frontend (Vite)"
-            sudo npm ci
-            sudo npm run build
+            npm ci
+            npm run build
 
             echo "==> [5/8] Jalankan migrasi database"
-            sudo $PHP artisan migrate --force
+            $PHP artisan migrate --force
 
             echo "==> [6/8] Rebuild cache Laravel"
-            sudo $PHP artisan optimize:clear
-            sudo $PHP artisan config:cache
-            sudo $PHP artisan route:cache
-            sudo $PHP artisan view:cache
-            sudo $PHP artisan storage:link || true
+            $PHP artisan optimize:clear
+            $PHP artisan config:cache
+            $PHP artisan route:cache
+            $PHP artisan view:cache
+            $PHP artisan storage:link || true
 
             echo "==> [7/8] Kembalikan kepemilikan file ke www:www"
-            sudo chown -R www:www "$APP_DIR"
+            chown -R www:www "$APP_DIR"
 
             echo "==> [8/8] Reload PHP-FPM 8.4 & Nginx"
-            sudo /etc/init.d/php-fpm-84 reload || sudo systemctl reload php-fpm-84 || true
-            sudo /etc/init.d/nginx reload || sudo nginx -s reload || true
+            /etc/init.d/php-fpm-84 reload || systemctl reload php-fpm-84 || true
+            /etc/init.d/nginx reload || nginx -s reload || true
 
-            echo "==> Deploy selesai \xE2\x9C\x85"
+            echo "==> Deploy selesai"
+            DEPLOY
