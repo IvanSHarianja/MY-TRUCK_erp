@@ -1,0 +1,66 @@
+name: Deploy to siproper-test
+
+# Auto-deploy: setiap push ke `main` akan men-deploy ke server siproper-test.
+# Bisa juga dijalankan manual lewat tab "Actions" (workflow_dispatch).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Cegah dua deploy berjalan bersamaan (antri, tidak saling membatalkan).
+concurrency:
+  group: deploy-siproper-test
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH deploy ke /www/wwwroot/mytruck.siproper.cloud
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          command_timeout: 20m
+          script: |
+            set -e
+            APP_DIR=/www/wwwroot/mytruck.siproper.cloud
+            PHP=/www/server/php/84/bin/php
+
+            echo "==> [1/8] Tandai direktori aman untuk git (root)"
+            sudo git config --global --add safe.directory "$APP_DIR"
+
+            cd "$APP_DIR"
+
+            echo "==> [2/8] Tarik kode terbaru dari origin/main"
+            sudo git fetch --all --prune
+            sudo git reset --hard origin/main
+
+            echo "==> [3/8] Composer install (production)"
+            sudo composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
+
+            echo "==> [4/8] Build asset frontend (Vite)"
+            sudo npm ci
+            sudo npm run build
+
+            echo "==> [5/8] Jalankan migrasi database"
+            sudo $PHP artisan migrate --force
+
+            echo "==> [6/8] Rebuild cache Laravel"
+            sudo $PHP artisan optimize:clear
+            sudo $PHP artisan config:cache
+            sudo $PHP artisan route:cache
+            sudo $PHP artisan view:cache
+            sudo $PHP artisan storage:link || true
+
+            echo "==> [7/8] Kembalikan kepemilikan file ke www:www"
+            sudo chown -R www:www "$APP_DIR"
+
+            echo "==> [8/8] Reload PHP-FPM 8.4 & Nginx"
+            sudo /etc/init.d/php-fpm-84 reload || sudo systemctl reload php-fpm-84 || true
+            sudo /etc/init.d/nginx reload || sudo nginx -s reload || true
+
+            echo "==> Deploy selesai \xE2\x9C\x85"
