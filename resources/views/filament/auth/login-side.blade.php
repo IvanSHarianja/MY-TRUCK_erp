@@ -6,7 +6,7 @@
     <div class="mt-login-side-hero">
         <h1 class="mt-login-side-title">Selamat<br>Datang</h1>
         <p class="mt-login-side-tagline">
-            Sistem Informasi Akuntansi<br>
+            Sistem Informasi Akuntansi Keuangan<br>
             Alat Berat &amp; Dump Truck
         </p>
     </div>

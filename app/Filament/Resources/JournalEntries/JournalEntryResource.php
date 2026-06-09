@@ -25,7 +25,7 @@ class JournalEntryResource extends Resource
     // Top-level (tanpa group) — muncul tepat setelah Dashboard, sebelum group lain
     protected static string|\UnitEnum|null $navigationGroup = null;
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 2;
 
     protected static ?string $recordTitleAttribute = 'entry_number';
 
