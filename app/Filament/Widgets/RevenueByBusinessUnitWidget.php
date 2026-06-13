@@ -22,6 +22,9 @@ class RevenueByBusinessUnitWidget extends ChartWidget
 
     protected ?string $maxHeight = '260px';
 
+    /** Auto-refresh data widget tiap 3 detik (untuk update lintas tab) */
+    protected ?string $pollingInterval = '3s';
+
     protected function getData(): array
     {
         $tenant = Filament::getTenant();

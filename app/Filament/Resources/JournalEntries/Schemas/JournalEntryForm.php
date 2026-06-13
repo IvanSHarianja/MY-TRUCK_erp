@@ -90,7 +90,7 @@ class JournalEntryForm
                         Repeater::make('lines')
                             ->label('')
                             ->relationship()
-                            ->live(debounce: 400)
+                            ->live()
                             ->reorderable()
                             ->reorderableWithButtons()
                             ->orderColumn('sort_order')
@@ -116,37 +116,49 @@ class JournalEntryForm
                                     })
                                     ->searchable()
                                     ->required()
+                                    ->live()
                                     ->columnSpan(1),
 
                                 TextInput::make('description')
                                     ->label('Keterangan Baris')
                                     ->placeholder('opsional')
+                                    ->live(onBlur: true)
                                     ->columnSpan(1),
 
                                 TextInput::make('debit')
                                     ->label('Debit (Rp)')
-                                    ->numeric()
                                     ->default(0)
                                     ->prefix('Rp')
-                                    ->inputMode('decimal')
-                                    ->live(debounce: 400)
+                                    ->inputMode('numeric')
+                                    ->formatStateUsing(fn ($state) => $state ? number_format((float) $state, 0, ',', '.') : '0')
+                                    ->dehydrateStateUsing(fn ($state) => (float) str_replace('.', '', (string) $state))
+                                    ->extraInputAttributes([
+                                        'x-on:input' => "\$el.value = \$el.value.replace(/[^0-9]/g, '').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.')",
+                                    ])
+                                    ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state, callable $set) {
-                                        if ((float) $state > 0) {
-                                            $set('kredit', 0);
+                                        $val = (float) str_replace('.', '', (string) $state);
+                                        if ($val > 0) {
+                                            $set('kredit', '0');
                                         }
                                     })
                                     ->columnSpan(1),
 
                                 TextInput::make('kredit')
                                     ->label('Kredit (Rp)')
-                                    ->numeric()
                                     ->default(0)
                                     ->prefix('Rp')
-                                    ->inputMode('decimal')
-                                    ->live(debounce: 400)
+                                    ->inputMode('numeric')
+                                    ->formatStateUsing(fn ($state) => $state ? number_format((float) $state, 0, ',', '.') : '0')
+                                    ->dehydrateStateUsing(fn ($state) => (float) str_replace('.', '', (string) $state))
+                                    ->extraInputAttributes([
+                                        'x-on:input' => "\$el.value = \$el.value.replace(/[^0-9]/g, '').replace(/\\B(?=(\\d{3})+(?!\\d))/g, '.')",
+                                    ])
+                                    ->live(onBlur: true)
                                     ->afterStateUpdated(function ($state, callable $set) {
-                                        if ((float) $state > 0) {
-                                            $set('debit', 0);
+                                        $val = (float) str_replace('.', '', (string) $state);
+                                        if ($val > 0) {
+                                            $set('debit', '0');
                                         }
                                     })
                                     ->columnSpan(1),
@@ -159,9 +171,12 @@ class JournalEntryForm
                                 $debit = 0.0;
                                 $kredit = 0.0;
 
+                                // Helper: lepas titik (separator ribuan dari mask) sebelum cast float
+                                $parse = fn ($v) => (float) str_replace('.', '', (string) ($v ?? 0));
+
                                 foreach ($lines as $line) {
-                                    $debit += (float) ($line['debit'] ?? 0);
-                                    $kredit += (float) ($line['kredit'] ?? 0);
+                                    $debit  += $parse($line['debit']  ?? 0);
+                                    $kredit += $parse($line['kredit'] ?? 0);
                                 }
 
                                 $selisih = round($debit - $kredit, 2);

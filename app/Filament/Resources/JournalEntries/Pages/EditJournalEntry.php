@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\JournalEntries\Pages;
 
 use App\Filament\Resources\JournalEntries\JournalEntryResource;
-use App\Models\JournalEntry;
 use App\Services\Accounting\JournalService;
 use Filament\Actions\Action;
 use Filament\Actions\DeleteAction;
@@ -18,6 +17,13 @@ class EditJournalEntry extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
+            // Tombol Save dipindah ke atas (hanya untuk draft yg masih bisa diedit)
+            $this->getSaveFormAction()
+                ->formId('form')
+                ->visible(fn (): bool => $this->record->isDraft()),
+
+            $this->getCancelFormAction(),
+
             Action::make('post')
                 ->label('Post Jurnal')
                 ->icon(Heroicon::CheckCircle)
@@ -51,6 +57,14 @@ class EditJournalEntry extends EditRecord
             DeleteAction::make()
                 ->visible(fn (): bool => $this->record->isDraft()),
         ];
+    }
+
+    /**
+     * Kosongkan tombol di bawah form supaya tidak duplikat.
+     */
+    protected function getFormActions(): array
+    {
+        return [];
     }
 
     protected function mutateFormDataBeforeSave(array $data): array

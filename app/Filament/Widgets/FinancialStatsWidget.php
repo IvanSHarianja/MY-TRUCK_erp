@@ -19,6 +19,9 @@ class FinancialStatsWidget extends StatsOverviewWidget
 
     protected int|string|array $columnSpan = 'full';
 
+    /** Auto-refresh data widget tiap 3 detik (untuk update lintas tab) */
+    protected ?string $pollingInterval = '3s';
+
     protected function getStats(): array
     {
         $tenant = Filament::getTenant();

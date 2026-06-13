@@ -11,6 +11,31 @@ class CreateJournalEntry extends CreateRecord
 {
     protected static string $resource = JournalEntryResource::class;
 
+    /**
+     * Hilangkan tombol "Create & create another".
+     */
+    protected static bool $canCreateAnother = false;
+
+    /**
+     * Pindahkan tombol Create + Cancel ke pojok kanan atas (header).
+     */
+    protected function getHeaderActions(): array
+    {
+        return [
+            $this->getCreateFormAction()
+                ->formId('form'),
+            $this->getCancelFormAction(),
+        ];
+    }
+
+    /**
+     * Kosongkan tombol di bawah form supaya tidak duplikat.
+     */
+    protected function getFormActions(): array
+    {
+        return [];
+    }
+
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $tenant = Filament::getTenant();

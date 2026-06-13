@@ -21,6 +21,9 @@ class MonthlyProfitTrendWidget extends ChartWidget
 
     protected ?string $maxHeight = '260px';
 
+    /** Auto-refresh data widget tiap 5 detik (grafik 12 bulan = relatif berat, beri jeda lebih) */
+    protected ?string $pollingInterval = '5s';
+
     protected function getData(): array
     {
         $tenant = Filament::getTenant();
