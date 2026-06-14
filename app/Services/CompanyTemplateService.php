@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Account;
 use App\Models\BusinessUnit;
 use App\Models\Company;
+use App\Models\Material;
 use Illuminate\Support\Facades\DB;
 
 class CompanyTemplateService
@@ -14,6 +15,7 @@ class CompanyTemplateService
         DB::transaction(function () use ($company) {
             $this->seedAccounts($company);
             $this->seedBusinessUnits($company);
+            $this->seedMaterials($company);
         });
     }
 
@@ -31,6 +33,16 @@ class CompanyTemplateService
     {
         foreach ($this->businessUnits() as $row) {
             BusinessUnit::updateOrCreate(
+                ['company_id' => $company->id, 'code' => $row['code']],
+                $row + ['company_id' => $company->id, 'is_active' => true],
+            );
+        }
+    }
+
+    public function seedMaterials(Company $company): void
+    {
+        foreach ($this->materials() as $row) {
+            Material::updateOrCreate(
                 ['company_id' => $company->id, 'code' => $row['code']],
                 $row + ['company_id' => $company->id, 'is_active' => true],
             );
@@ -67,6 +79,7 @@ class CompanyTemplateService
             ['code' => '221140', 'name' => 'Utang PPh 21 & PPh 23',             'category' => 'kewajiban', 'sub_category' => 'kewajiban_lancar',  'normal_balance' => 'kredit', 'cash_flow_category' => 'operasi',   'tax_type' => 'pph_21'],
             ['code' => '221150', 'name' => 'Utang Angsuran Leasing (JB < 1thn)','category' => 'kewajiban', 'sub_category' => 'kewajiban_lancar',  'normal_balance' => 'kredit', 'cash_flow_category' => 'pendanaan', 'tax_type' => 'non_pajak'],
             ['code' => '221160', 'name' => 'Utang Lain-lain Lancar',            'category' => 'kewajiban', 'sub_category' => 'kewajiban_lancar',  'normal_balance' => 'kredit', 'cash_flow_category' => 'operasi',   'tax_type' => 'non_pajak'],
+            ['code' => '221170', 'name' => 'Uang Muka Proyek Diterima',         'category' => 'kewajiban', 'sub_category' => 'kewajiban_lancar',  'normal_balance' => 'kredit', 'cash_flow_category' => 'operasi',   'tax_type' => 'non_pajak'],
 
             ['code' => '222100', 'name' => 'Utang Leasing',                     'category' => 'kewajiban', 'sub_category' => 'kewajiban_panjang', 'normal_balance' => 'kredit', 'cash_flow_category' => 'pendanaan', 'tax_type' => 'non_pajak'],
             ['code' => '222110', 'name' => 'Utang Bank',                        'category' => 'kewajiban', 'sub_category' => 'kewajiban_panjang', 'normal_balance' => 'kredit', 'cash_flow_category' => 'pendanaan', 'tax_type' => 'non_pajak'],
@@ -93,6 +106,7 @@ class CompanyTemplateService
             ['code' => '551300', 'name' => 'Beban HPP Material Alam',           'category' => 'beban', 'sub_category' => 'beban_hpp', 'normal_balance' => 'debit', 'cash_flow_category' => 'operasi', 'tax_type' => 'non_pajak'],
             ['code' => '551400', 'name' => 'Beban Maintenance & Suku Cadang',   'category' => 'beban', 'sub_category' => 'beban_hpp', 'normal_balance' => 'debit', 'cash_flow_category' => 'operasi', 'tax_type' => 'non_pajak'],
             ['code' => '551500', 'name' => 'Beban Mobilisasi & Demobilisasi',   'category' => 'beban', 'sub_category' => 'beban_hpp', 'normal_balance' => 'debit', 'cash_flow_category' => 'operasi', 'tax_type' => 'non_pajak'],
+            ['code' => '551600', 'name' => 'Beban Subkontraktor',               'category' => 'beban', 'sub_category' => 'beban_hpp', 'normal_balance' => 'debit', 'cash_flow_category' => 'operasi', 'tax_type' => 'pph_23'],
 
             // === 5 BEBAN OPERASIONAL ===
             ['code' => '552100', 'name' => 'Beban Penyusutan',                  'category' => 'beban', 'sub_category' => 'beban_operasional', 'normal_balance' => 'debit', 'cash_flow_category' => 'non_kas', 'tax_type' => 'non_pajak'],
@@ -119,6 +133,20 @@ class CompanyTemplateService
             ['code' => 'MATL', 'name' => 'Penjualan Material Alam', 'description' => 'Pasir, batu, sirtu, tanah (per m³ / per truk)',              'color' => '#10B981'],
             ['code' => 'BONG', 'name' => 'Borongan Pengurugan',     'description' => 'Borongan & land clearing (per m³ padat / m² lahan)',         'color' => '#EF4444'],
             ['code' => 'UMUM', 'name' => 'Umum / Non-Spesifik',     'description' => 'Transaksi yang tidak terkait lini bisnis spesifik',          'color' => '#6B7280'],
+        ];
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function materials(): array
+    {
+        return [
+            ['code' => 'MAT-001', 'name' => 'Tanah Urug',                'harga_per_satuan' => 65000,  'satuan' => 'm3'],
+            ['code' => 'MAT-002', 'name' => 'Sirtu',                     'harga_per_satuan' => 110000, 'satuan' => 'm3'],
+            ['code' => 'MAT-003', 'name' => 'Pasir Urug',                'harga_per_satuan' => 125000, 'satuan' => 'm3'],
+            ['code' => 'MAT-004', 'name' => 'Pasir Cor / Pasang',        'harga_per_satuan' => 165000, 'satuan' => 'm3'],
+            ['code' => 'MAT-005', 'name' => 'Batu Belah',                'harga_per_satuan' => 175000, 'satuan' => 'm3'],
+            ['code' => 'MAT-006', 'name' => 'Batu Split',                'harga_per_satuan' => 185000, 'satuan' => 'm3'],
+            ['code' => 'MAT-007', 'name' => 'Limestone / Base Course',   'harga_per_satuan' => 95000,  'satuan' => 'm3'],
         ];
     }
 }

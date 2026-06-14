@@ -6,6 +6,7 @@ use App\Filament\Pages\Tenancy\EditCompanyProfile;
 use App\Filament\Pages\Tenancy\RegisterCompany;
 use App\Filament\Pages\UserManagement;
 use App\Filament\Widgets\FinancialStatsWidget;
+use App\Filament\Widgets\InvoiceStatsWidget;
 use App\Filament\Widgets\MonthlyProfitTrendWidget;
 use App\Filament\Widgets\RevenueByBusinessUnitWidget;
 use App\Models\Company;
@@ -53,6 +54,7 @@ class AdminPanelProvider extends PanelProvider
             ->sidebarCollapsibleOnDesktop()
             ->maxContentWidth(Width::Full)
             ->navigationGroups([
+                'Operasional',
                 'Master Data',
                 'Laporan Keuangan',
             ])
@@ -75,6 +77,7 @@ class AdminPanelProvider extends PanelProvider
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\Filament\Widgets')
             ->widgets([
                 FinancialStatsWidget::class,
+                InvoiceStatsWidget::class,
                 RevenueByBusinessUnitWidget::class,
                 MonthlyProfitTrendWidget::class,
             ])

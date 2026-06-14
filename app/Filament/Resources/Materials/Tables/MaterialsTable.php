@@ -1,16 +1,17 @@
 <?php
 
-namespace App\Filament\Resources\Clients\Tables;
+namespace App\Filament\Resources\Materials\Tables;
 
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\TernaryFilter;
 use Filament\Tables\Table;
 
-class ClientsTable
+class MaterialsTable
 {
     public static function configure(Table $table): Table
     {
@@ -22,27 +23,30 @@ class ClientsTable
                     ->searchable()
                     ->sortable(),
                 TextColumn::make('name')
-                    ->label('Nama')
-                    ->searchable(),
-                TextColumn::make('contact_person')
-                    ->label('Contact')
-                    ->toggleable(),
-                TextColumn::make('phone')
-                    ->label('Telepon')
-                    ->toggleable(),
-                TextColumn::make('npwp')
-                    ->label('NPWP')
-                    ->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('piutang_berjalan')
-                    ->label('Piutang Berjalan')
+                    ->label('Nama Material')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('harga_per_satuan')
+                    ->label('Harga')
                     ->money('IDR')
-                    ->getStateUsing(fn ($record) => $record->piutang_berjalan)
-                    ->color(fn ($state) => $state > 0 ? 'warning' : 'gray'),
+                    ->sortable(),
+                TextColumn::make('satuan')
+                    ->label('Satuan')
+                    ->badge(),
                 IconColumn::make('is_active')
                     ->label('Aktif')
                     ->boolean(),
             ])
             ->filters([
+                SelectFilter::make('satuan')
+                    ->options([
+                        'm3'  => 'm³',
+                        'm2'  => 'm²',
+                        'ton' => 'Ton',
+                        'kg'  => 'Kilogram',
+                        'rit' => 'Rit',
+                        'pcs' => 'Pcs',
+                    ]),
                 TernaryFilter::make('is_active')->label('Status Aktif'),
             ])
             ->recordActions([
