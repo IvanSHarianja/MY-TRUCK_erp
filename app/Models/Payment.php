@@ -5,10 +5,21 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\Activitylog\Support\LogOptions;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
 
 class Payment extends Model
 {
     use BelongsToCompany;
+    use LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['payment_number', 'payment_date', 'invoice_id', 'amount', 'cash_account_id', 'reference_number'])
+            ->logOnlyDirty()
+            ->useLogName('payment');
+    }
 
     protected $fillable = [
         'company_id',

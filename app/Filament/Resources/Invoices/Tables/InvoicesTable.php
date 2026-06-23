@@ -221,6 +221,15 @@ class InvoicesTable
                         }
                     }),
 
+                // Cetak PDF (untuk invoice yang sudah terbit)
+                Action::make('print_pdf')
+                    ->label('Cetak PDF')
+                    ->icon(Heroicon::OutlinedPrinter)
+                    ->color('gray')
+                    ->visible(fn (Invoice $r): bool => in_array($r->status, ['terbit', 'sebagian', 'lunas']))
+                    ->url(fn (Invoice $r) => route('pdf.invoice', ['invoice' => $r->id]))
+                    ->openUrlInNewTab(),
+
                 // Edit (hanya draft)
                 EditAction::make()
                     ->visible(fn (Invoice $r): bool => $r->isDraft()),

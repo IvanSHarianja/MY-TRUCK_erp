@@ -5,10 +5,21 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Spatie\Activitylog\Support\LogOptions;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
 
 class MaterialSale extends Model
 {
     use BelongsToCompany;
+    use LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['sale_number', 'sale_date', 'client_id', 'material_id', 'volume', 'total', 'metode'])
+            ->logOnlyDirty()
+            ->useLogName('material_sale');
+    }
 
     protected $fillable = [
         'company_id',

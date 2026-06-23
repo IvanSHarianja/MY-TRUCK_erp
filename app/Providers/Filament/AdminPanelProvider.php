@@ -4,11 +4,13 @@ namespace App\Providers\Filament;
 
 use App\Filament\Pages\Tenancy\EditCompanyProfile;
 use App\Filament\Pages\Tenancy\RegisterCompany;
+use App\Filament\Pages\ActivityLog;
 use App\Filament\Pages\UserManagement;
 use App\Filament\Widgets\FinancialStatsWidget;
 use App\Filament\Widgets\InvoiceStatsWidget;
 use App\Filament\Widgets\MonthlyProfitTrendWidget;
 use App\Filament\Widgets\RevenueByBusinessUnitWidget;
+use App\Filament\Widgets\RevenueMixBarWidget;
 use App\Models\Company;
 use Filament\Enums\ThemeMode;
 use Filament\Support\Enums\Width;
@@ -55,8 +57,8 @@ class AdminPanelProvider extends PanelProvider
             ->maxContentWidth(Width::Full)
             ->navigationGroups([
                 'Operasional',
-                'Master Data',
                 'Laporan Keuangan',
+                'Master Data',
             ])
             ->tenant(Company::class, slugAttribute: 'slug')
             ->tenantRegistration(RegisterCompany::class)
@@ -68,6 +70,13 @@ class AdminPanelProvider extends PanelProvider
                     ->url(fn (): string => UserManagement::canAccess() ? UserManagement::getUrl() : '#')
                     ->visible(fn (): bool => UserManagement::canAccess())
                     ->sort(1),
+
+                MenuItem::make()
+                    ->label('Riwayat Aktivitas')
+                    ->icon(Heroicon::OutlinedClipboardDocumentList)
+                    ->url(fn (): string => ActivityLog::canAccess() ? ActivityLog::getUrl() : '#')
+                    ->visible(fn (): bool => ActivityLog::canAccess())
+                    ->sort(2),
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
@@ -78,6 +87,7 @@ class AdminPanelProvider extends PanelProvider
             ->widgets([
                 FinancialStatsWidget::class,
                 InvoiceStatsWidget::class,
+                RevenueMixBarWidget::class,
                 RevenueByBusinessUnitWidget::class,
                 MonthlyProfitTrendWidget::class,
             ])

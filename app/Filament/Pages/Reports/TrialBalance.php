@@ -4,6 +4,7 @@ namespace App\Filament\Pages\Reports;
 
 use App\Services\Accounting\TrialBalanceService;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -27,6 +28,23 @@ class TrialBalance extends Page implements HasForms
     protected static ?int $navigationSort = 1;
 
     protected static ?string $title = 'Neraca Saldo (Trial Balance)';
+
+    protected function getHeaderActions(): array
+    {
+        $tenant = Filament::getTenant();
+        return [
+            Action::make('export_pdf')
+                ->label('Export PDF')
+                ->icon(Heroicon::OutlinedPrinter)
+                ->color('gray')
+                ->url(fn () => route('pdf.trial-balance', [
+                    'tenant' => $tenant->slug,
+                    'year'   => $this->year,
+                    'month'  => $this->month,
+                ]))
+                ->openUrlInNewTab(),
+        ];
+    }
 
     public ?array $data = [];
 

@@ -6,10 +6,21 @@ use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Spatie\Activitylog\Support\LogOptions;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
 
 class Project extends Model
 {
     use BelongsToCompany;
+    use LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['project_number', 'name', 'nilai_kontrak', 'progress_pct', 'tertagih_pct', 'dp_diterima', 'status'])
+            ->logOnlyDirty()
+            ->useLogName('project');
+    }
 
     protected $fillable = [
         'company_id',
@@ -80,4 +91,20 @@ class Project extends Model
 
     public function isBerjalan(): bool { return $this->status === 'berjalan'; }
     public function isSelesai(): bool  { return $this->status === 'selesai'; }
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Project $project) {
+            if ((float) $project->tertagih_pct > 0 || (float) $project->dp_diterima > 0) {
+                throw new \RuntimeException(
+                    "Proyek {$project->project_number} sudah ada termin/DP. Void invoice & jurnal DP terkait dulu."
+                );
+            }
+            if ($project->termins()->exists()) {
+                throw new \RuntimeException(
+                    "Proyek {$project->project_number} masih memiliki termin. Void invoice termin dulu."
+                );
+            }
+        });
+    }
 }

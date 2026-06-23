@@ -5,6 +5,7 @@ namespace App\Filament\Pages\Reports;
 use App\Models\BusinessUnit;
 use App\Services\Accounting\IncomeStatementService;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -28,6 +29,24 @@ class IncomeStatement extends Page implements HasForms
     protected static ?int $navigationSort = 2;
 
     protected static ?string $title = 'Laporan Laba Rugi (Income Statement)';
+
+    protected function getHeaderActions(): array
+    {
+        $tenant = Filament::getTenant();
+        return [
+            Action::make('export_pdf')
+                ->label('Export PDF')
+                ->icon(Heroicon::OutlinedPrinter)
+                ->color('gray')
+                ->url(fn () => route('pdf.income-statement', [
+                    'tenant'           => $tenant->slug,
+                    'year'             => $this->year,
+                    'month'            => $this->month,
+                    'business_unit_id' => $this->businessUnitId,
+                ]))
+                ->openUrlInNewTab(),
+        ];
+    }
 
     public ?array $data = [];
 

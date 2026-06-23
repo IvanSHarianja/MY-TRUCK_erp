@@ -4,6 +4,7 @@ namespace App\Filament\Pages\Reports;
 
 use App\Services\Accounting\BalanceSheetService;
 use BackedEnum;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -27,6 +28,23 @@ class BalanceSheet extends Page implements HasForms
     protected static ?int $navigationSort = 3;
 
     protected static ?string $title = 'Neraca (Balance Sheet)';
+
+    protected function getHeaderActions(): array
+    {
+        $tenant = Filament::getTenant();
+        return [
+            Action::make('export_pdf')
+                ->label('Export PDF')
+                ->icon(Heroicon::OutlinedPrinter)
+                ->color('gray')
+                ->url(fn () => route('pdf.balance-sheet', [
+                    'tenant' => $tenant->slug,
+                    'year'   => $this->year,
+                    'month'  => $this->month,
+                ]))
+                ->openUrlInNewTab(),
+        ];
+    }
 
     public ?array $data = [];
 

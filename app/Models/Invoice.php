@@ -7,10 +7,22 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Spatie\Activitylog\Support\LogOptions;
+use Spatie\Activitylog\Models\Concerns\LogsActivity;
 
 class Invoice extends Model
 {
     use BelongsToCompany;
+    use LogsActivity;
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['invoice_number', 'invoice_date', 'client_id', 'amount', 'paid_amount', 'status', 'void_reason'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName('invoice');
+    }
 
     protected $fillable = [
         'company_id',
@@ -42,6 +54,24 @@ class Invoice extends Model
         'amount'       => 'decimal:2',
         'paid_amount'  => 'decimal:2',
     ];
+
+    protected static function booted(): void
+    {
+        // Proteksi hapus: hanya draft atau void yang boleh dihapus,
+        // dan tidak boleh ada payment terkait.
+        static::deleting(function (Invoice $invoice) {
+            if (! in_array($invoice->status, ['draft', 'void'], true)) {
+                throw new \RuntimeException(
+                    "Invoice {$invoice->invoice_number} berstatus {$invoice->status} — tidak bisa dihapus. Void dulu invoice ini."
+                );
+            }
+            if ($invoice->payments()->exists()) {
+                throw new \RuntimeException(
+                    "Invoice {$invoice->invoice_number} sudah memiliki pembayaran. Batalkan pembayaran terlebih dahulu."
+                );
+            }
+        });
+    }
 
     public function client(): BelongsTo
     {

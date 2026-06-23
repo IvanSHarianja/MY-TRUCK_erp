@@ -2,6 +2,7 @@
 
 namespace App\Services\Accounting;
 
+use App\Mail\InvoiceIssued;
 use App\Models\Account;
 use App\Models\BusinessUnit;
 use App\Models\Company;
@@ -12,6 +13,8 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class InvoiceService
@@ -186,8 +189,31 @@ class InvoiceService
                 'receivable_account_id' => $receivable->id,
             ]);
 
-            return $invoice->refresh();
+            $invoice->refresh();
+
+            // Kirim email ke client (opsional - graceful fail kalau SMTP belum dikonfigurasi)
+            $this->sendInvoiceEmail($invoice);
+
+            return $invoice;
         });
+    }
+
+    /**
+     * Kirim email invoice ke client (tidak crash kalau SMTP gagal).
+     */
+    private function sendInvoiceEmail(Invoice $invoice): void
+    {
+        $clientEmail = optional($invoice->client)->email;
+        if (! $clientEmail || ! filter_var($clientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;  // Skip kalau client tidak punya email
+        }
+
+        try {
+            Mail::to($clientEmail)->send(new InvoiceIssued($invoice));
+        } catch (\Throwable $e) {
+            // Log error tapi jangan rollback invoice
+            Log::warning('Gagal kirim email invoice ' . $invoice->invoice_number . ': ' . $e->getMessage());
+        }
     }
 
     /**

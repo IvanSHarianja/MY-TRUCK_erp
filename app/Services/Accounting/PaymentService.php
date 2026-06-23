@@ -2,6 +2,7 @@
 
 namespace App\Services\Accounting;
 
+use App\Mail\PaymentReceived;
 use App\Models\Account;
 use App\Models\Company;
 use App\Models\Invoice;
@@ -12,6 +13,8 @@ use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
 
 class PaymentService
@@ -157,8 +160,25 @@ class PaymentService
                 'status'      => $newStatus,
             ]);
 
+            // Kirim email konfirmasi pembayaran ke client (graceful fail)
+            $this->sendPaymentEmail($payment);
+
             return $payment;
         });
+    }
+
+    private function sendPaymentEmail(Payment $payment): void
+    {
+        $clientEmail = optional($payment->invoice->client)->email;
+        if (! $clientEmail || ! filter_var($clientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        try {
+            Mail::to($clientEmail)->send(new PaymentReceived($payment));
+        } catch (\Throwable $e) {
+            Log::warning('Gagal kirim email konfirmasi payment ' . $payment->payment_number . ': ' . $e->getMessage());
+        }
     }
 
     /**
