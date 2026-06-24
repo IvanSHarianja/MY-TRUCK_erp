@@ -126,11 +126,13 @@ class ProjectsTable
                                         ->where('company_id', $record->company_id)
                                         ->where('is_active', true)
                                         ->where('code', 'like', '111%')
+                                        ->postable()  // ← hanya leaf
                                         ->orderBy('code')->get()
                                         ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])
                                         ->toArray();
                                 })
-                                ->searchable(),
+                                ->searchable()
+                                ->helperText('Pilih sub-akun spesifik bank/kas.'),
 
                             TextInput::make('amount')
                                 ->label('Nominal DP (Rp)')

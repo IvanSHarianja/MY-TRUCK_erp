@@ -109,15 +109,20 @@ class ProjectService
 
         $this->journalService->assertPeriodOpen($company, $dpDate->year, $dpDate->month);
 
-        // Akun Uang Muka Proyek (221170)
-        $uangMuka = Account::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('code', '221170')
-            ->first();
+        // Validasi cash account user pilih sudah postable
+        if (! $cashAccount->isPostable()) {
+            throw ValidationException::withMessages([
+                'cash_account_id' => "Akun [{$cashAccount->code}] {$cashAccount->name} adalah HEADER. Pilih sub-akun spesifik.",
+            ]);
+        }
+
+        // Akun Uang Muka Proyek (221170) — fallback ke first child kalau HEADER
+        $uangMuka = Account::findPostableByCode('221170', $company->id);
 
         if (! $uangMuka) {
             throw ValidationException::withMessages([
-                'account' => 'Akun Uang Muka Proyek (221170) tidak ditemukan di COA. Pastikan COA sudah ter-sync.',
+                'account' => 'Akun Uang Muka Proyek (221170) tidak ditemukan/postable. '
+                    . 'Pastikan COA sudah ter-sync atau tambah sub-akun bila sudah jadi HEADER.',
             ]);
         }
 

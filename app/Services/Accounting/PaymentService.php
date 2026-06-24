@@ -90,6 +90,13 @@ class PaymentService
 
         $this->journalService->assertPeriodOpen($company, $payDate->year, $payDate->month);
 
+        // Validasi cash account yg user pilih harus postable (bukan HEADER)
+        if (! $cashAccount->isPostable()) {
+            throw ValidationException::withMessages([
+                'cash_account_id' => "Akun [{$cashAccount->code}] {$cashAccount->name} adalah HEADER (punya sub-akun). Pilih sub-akun spesifik.",
+            ]);
+        }
+
         $receivable = $this->invoiceService->resolveReceivableAccount($invoice);
 
         return DB::transaction(function () use (

@@ -34,10 +34,13 @@ class CashFlowService
      */
     public function getReport(int $companyId, int $year, ?int $month = null): array
     {
-        $kasAccountIds = Account::where('company_id', $companyId)
-            ->whereIn('code', ['111100', '111110'])
-            ->pluck('id')
-            ->toArray();
+        // Include 111100 (Kas & Bank), 111110 (Kas Kecil), DAN semua sub-akun (descendants).
+        // Setelah F11, user bisa split 111100 jadi 111100-01 BCA, 111100-02 Mandiri, dll.
+        // CashFlow harus include semua ID descendant agar saldo tetap akurat.
+        $kasAccountIds = array_unique(array_merge(
+            Account::descendantIds('111100', $companyId, includeSelf: true),
+            Account::descendantIds('111110', $companyId, includeSelf: true),
+        ));
 
         if (empty($kasAccountIds)) {
             return $this->emptyReport();

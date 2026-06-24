@@ -130,7 +130,8 @@ class MaterialSaleForm
                                 $query = Account::query()
                                     ->where('is_active', true)
                                     ->where('sub_category', 'aset_lancar')
-                                    ->where('code', 'like', '111%');
+                                    ->where('code', 'like', '111%')
+                                    ->postable();  // ← hanya leaf
                                 if ($tenant) {
                                     $query->where('company_id', $tenant->getKey());
                                 }
@@ -139,7 +140,7 @@ class MaterialSaleForm
                                     ->toArray();
                             })
                             ->searchable()
-                            ->helperText('Kosongkan untuk default ke 111100 Kas dan Bank'),
+                            ->helperText('Pilih sub-akun spesifik bank/kas (BCA / Mandiri / Kas Tunai / dll).'),
 
                         Textarea::make('notes')
                             ->label('Catatan')

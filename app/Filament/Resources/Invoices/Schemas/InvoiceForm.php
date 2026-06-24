@@ -60,7 +60,8 @@ class InvoiceForm
                                 $tenant = Filament::getTenant();
                                 $query = Account::query()
                                     ->where('is_active', true)
-                                    ->where('category', 'pendapatan');
+                                    ->where('category', 'pendapatan')
+                                    ->postable();  // ← hanya leaf
 
                                 if ($tenant) {
                                     $query->where('company_id', $tenant->getKey());
@@ -73,7 +74,7 @@ class InvoiceForm
                                     ->toArray();
                             })
                             ->searchable()
-                            ->helperText('Kosongkan untuk pakai default sesuai lini bisnis'),
+                            ->helperText('Kosongkan untuk pakai default sesuai lini bisnis. Akun HEADER otomatis disembunyikan.'),
                     ]),
 
                 Section::make('Detail Penagihan')

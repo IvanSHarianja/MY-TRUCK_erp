@@ -174,15 +174,15 @@ class InvoicesTable
                                     ->where('company_id', $record->company_id)
                                     ->where('is_active', true)
                                     ->where('sub_category', 'aset_lancar')
-                                    ->where(function ($q) {
-                                        $q->where('code', 'like', '111%');  // akun kas/bank
-                                    })
+                                    ->where('code', 'like', '111%')
+                                    ->postable()  // ← hanya leaf account
                                     ->orderBy('code')
                                     ->get()
                                     ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])
                                     ->toArray();
                             })
-                            ->searchable(),
+                            ->searchable()
+                            ->helperText('Pilih sub-akun spesifik (BCA / Mandiri / dll). Akun header tidak muncul.'),
 
                         TextInput::make('amount')
                             ->label('Nominal (Rp)')

@@ -3,9 +3,44 @@
 namespace App\Filament\Resources\Accounts\Pages;
 
 use App\Filament\Resources\Accounts\AccountResource;
+use App\Models\Account;
+use Filament\Facades\Filament;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateAccount extends CreateRecord
 {
     protected static string $resource = AccountResource::class;
+
+    /**
+     * Pre-fill form jika ada query string ?parent_code=XXX
+     * (dari Action "+ Sub-Akun" di list).
+     */
+    protected function fillForm(): void
+    {
+        $parentCode = request()->query('parent_code');
+        $tenant     = Filament::getTenant();
+
+        if ($parentCode && $tenant) {
+            $parent = Account::withoutGlobalScopes()
+                ->where('company_id', $tenant->getKey())
+                ->where('code', $parentCode)
+                ->first();
+
+            if ($parent) {
+                $this->form->fill([
+                    'parent_code'        => $parent->code,
+                    'code'               => Account::suggestChildCode($parent->code, $tenant->getKey()),
+                    'category'           => $parent->category,
+                    'sub_category'       => $parent->sub_category,
+                    'normal_balance'     => $parent->normal_balance,
+                    'cash_flow_category' => $parent->cash_flow_category,
+                    'tax_type'           => $parent->tax_type ?? 'non_pajak',
+                    'is_active'          => true,
+                ]);
+                return;
+            }
+        }
+
+        parent::fillForm();
+    }
 }

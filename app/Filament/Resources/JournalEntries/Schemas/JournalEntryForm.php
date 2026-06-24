@@ -102,7 +102,10 @@ class JournalEntryForm
                                     ->label('Akun')
                                     ->options(function () {
                                         $tenant = Filament::getTenant();
-                                        $query = Account::query()->where('is_active', true);
+                                        // Filter ke akun POSTABLE saja (tidak punya children = leaf)
+                                        $query = Account::query()
+                                            ->where('is_active', true)
+                                            ->postable();
 
                                         if ($tenant) {
                                             $query->where('company_id', $tenant->getKey());
@@ -117,6 +120,7 @@ class JournalEntryForm
                                     ->searchable()
                                     ->required()
                                     ->live()
+                                    ->helperText('Hanya akun leaf (tanpa sub-akun) yang muncul. Akun HEADER otomatis disembunyikan.')
                                     ->columnSpan(1),
 
                                 TextInput::make('description')

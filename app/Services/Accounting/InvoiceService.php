@@ -59,24 +59,24 @@ class InvoiceService
     /**
      * Resolve akun pendapatan (revenue) untuk invoice.
      * Jika user pilih manual → pakai itu. Jika tidak → fallback ke default per lini.
+     * Kalau parent default sudah HEADER (karena di-split jadi sub-akun),
+     * otomatis fallback ke first child postable.
      */
     public function resolveRevenueAccount(Invoice $invoice): Account
     {
         if ($invoice->revenue_account_id) {
             $acc = Account::withoutGlobalScopes()->find($invoice->revenue_account_id);
-            if ($acc) return $acc;
+            if ($acc && $acc->isPostable()) return $acc;
         }
 
         $code = $this->defaultRevenueAccountCode($invoice->businessUnit);
 
-        $acc = Account::withoutGlobalScopes()
-            ->where('company_id', $invoice->company_id)
-            ->where('code', $code)
-            ->first();
+        $acc = Account::findPostableByCode($code, $invoice->company_id);
 
         if (! $acc) {
             throw ValidationException::withMessages([
-                'revenue_account_id' => "Akun pendapatan {$code} tidak ditemukan di COA. Tambahkan akun atau pilih manual.",
+                'revenue_account_id' => "Akun pendapatan {$code} tidak ditemukan/postable di COA. "
+                    . "Tambahkan sub-akun bila parent sudah jadi HEADER, atau pilih manual.",
             ]);
         }
 
@@ -85,22 +85,21 @@ class InvoiceService
 
     /**
      * Resolve akun piutang (receivable). Default: 111200 Piutang Usaha.
+     * Fallback ke first child kalau parent sudah HEADER.
      */
     public function resolveReceivableAccount(Invoice $invoice): Account
     {
         if ($invoice->receivable_account_id) {
             $acc = Account::withoutGlobalScopes()->find($invoice->receivable_account_id);
-            if ($acc) return $acc;
+            if ($acc && $acc->isPostable()) return $acc;
         }
 
-        $acc = Account::withoutGlobalScopes()
-            ->where('company_id', $invoice->company_id)
-            ->where('code', '111200')
-            ->first();
+        $acc = Account::findPostableByCode('111200', $invoice->company_id);
 
         if (! $acc) {
             throw ValidationException::withMessages([
-                'receivable_account_id' => 'Akun Piutang Usaha (111200) tidak ditemukan di COA.',
+                'receivable_account_id' => 'Akun Piutang Usaha (111200) tidak ditemukan/postable di COA. '
+                    . 'Pastikan akun 111200 ada dan punya minimal 1 sub-akun postable bila sudah jadi HEADER.',
             ]);
         }
 

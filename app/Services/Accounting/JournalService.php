@@ -2,6 +2,7 @@
 
 namespace App\Services\Accounting;
 
+use App\Models\Account;
 use App\Models\AccountingPeriod;
 use App\Models\Company;
 use App\Models\JournalEntry;
@@ -85,6 +86,30 @@ class JournalService
     }
 
     /**
+     * Pastikan semua akun yang dipakai di lines adalah POSTABLE (bukan HEADER).
+     * Akun header (yang punya children) tidak boleh di-post langsung.
+     *
+     * @param array<int, int> $accountIds
+     */
+    public function validateAccountsArePostable(array $accountIds): void
+    {
+        if (empty($accountIds)) return;
+
+        // Cari akun-akun yang punya children (= header)
+        $headerAccounts = Account::withoutGlobalScopes()
+            ->whereIn('id', $accountIds)
+            ->headers()
+            ->get(['id', 'code', 'name']);
+
+        if ($headerAccounts->isNotEmpty()) {
+            $names = $headerAccounts->map(fn ($a) => "[{$a->code}] {$a->name}")->implode(', ');
+            throw ValidationException::withMessages([
+                'lines' => "Akun berikut adalah HEADER (punya sub-akun) dan tidak bisa di-post langsung di jurnal: {$names}. Pilih sub-akun spesifiknya.",
+            ]);
+        }
+    }
+
+    /**
      * Pastikan periode (year-month) belum di-close.
      */
     public function assertPeriodOpen(Company $company, int $year, int $month): void
@@ -119,6 +144,11 @@ class JournalService
             'debit'  => $l->debit,
             'kredit' => $l->kredit,
         ])->toArray());
+
+        // Pastikan semua akun di lines adalah POSTABLE (bukan HEADER)
+        $this->validateAccountsArePostable(
+            $entry->lines->pluck('account_id')->unique()->all()
+        );
 
         $this->assertPeriodOpen(
             Company::findOrFail($entry->company_id),

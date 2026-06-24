@@ -107,29 +107,32 @@ class MaterialSaleService
      */
     private function postTunai(MaterialSale $sale, Company $company, ?BusinessUnit $matlUnit): void
     {
-        // Resolve akun kas (default 111100)
-        $kasAccount = $sale->cash_account_id
-            ? Account::withoutGlobalScopes()->find($sale->cash_account_id)
-            : Account::withoutGlobalScopes()
-                ->where('company_id', $company->id)
-                ->where('code', '111100')
-                ->first();
+        // Resolve akun kas: user pilih manual atau fallback ke 111100 (atau child-nya)
+        if ($sale->cash_account_id) {
+            $kasAccount = Account::withoutGlobalScopes()->find($sale->cash_account_id);
+            if ($kasAccount && ! $kasAccount->isPostable()) {
+                throw ValidationException::withMessages([
+                    'cash_account_id' => "Akun [{$kasAccount->code}] {$kasAccount->name} adalah HEADER. Pilih sub-akun spesifik.",
+                ]);
+            }
+        } else {
+            $kasAccount = Account::findPostableByCode('111100', $company->id);
+        }
 
         if (! $kasAccount) {
             throw ValidationException::withMessages([
-                'cash_account_id' => 'Akun Kas/Bank tidak ditemukan. Pilih akun kas manual.',
+                'cash_account_id' => 'Akun Kas/Bank (111100) tidak ditemukan/postable. '
+                    . 'Pastikan akun ini ada atau pilih akun kas manual.',
             ]);
         }
 
-        // Resolve akun pendapatan material (441300)
-        $revenueAccount = Account::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('code', '441300')
-            ->first();
+        // Resolve akun pendapatan material (441300) — fallback ke first child kalau HEADER
+        $revenueAccount = Account::findPostableByCode('441300', $company->id);
 
         if (! $revenueAccount) {
             throw ValidationException::withMessages([
-                'revenue' => 'Akun Pendapatan Penjualan Material (441300) tidak ditemukan di COA.',
+                'revenue' => 'Akun Pendapatan Penjualan Material (441300) tidak ditemukan/postable. '
+                    . 'Tambahkan sub-akun bila sudah jadi HEADER.',
             ]);
         }
 

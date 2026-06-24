@@ -74,11 +74,14 @@ class AssetForm
                     ->relationship(
                         name: 'account',
                         titleAttribute: 'name',
-                        modifyQueryUsing: fn ($query) => $query->where('sub_category', 'aset_tetap'),
+                        modifyQueryUsing: fn ($query) => $query
+                            ->where('sub_category', 'aset_tetap')
+                            ->postable(),  // ← hanya leaf account
                     )
                     ->getOptionLabelFromRecordUsing(fn ($record) => "[{$record->code}] {$record->name}")
                     ->searchable()
-                    ->preload(),
+                    ->preload()
+                    ->helperText('Akun HEADER otomatis disembunyikan — pilih sub-akun spesifik.'),
 
                 Select::make('status')
                     ->label('Status')
