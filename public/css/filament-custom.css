@@ -5,15 +5,43 @@
  */
 
 :root {
+    /* LIGHT MODE (default) */
     --mt-bg:           #FAFAFA;            /* page background */
     --mt-surface:      #FFFFFF;            /* card surface */
     --mt-surface-2:    #F4F4F5;            /* secondary surface (sidebar bg, hover) */
+    --mt-surface-3:    #FAFAFA;            /* table row hover, subtle distinct bg */
     --mt-border:       #E4E4E7;            /* subtle border */
     --mt-border-soft:  #F0F0F1;            /* very subtle */
     --mt-text:         #18181B;            /* primary text (near-black) */
     --mt-text-muted:   #71717A;            /* secondary text */
     --mt-accent-red:   #DC2626;            /* danger accent */
     --mt-accent-red-soft: #FEE2E2;
+    --mt-accent-green: #16A34A;
+    --mt-accent-green-soft: #DCFCE7;
+    --mt-accent-amber: #D97706;
+    --mt-accent-amber-soft: #FEF3C7;
+    --mt-accent-blue:  #2563EB;
+    --mt-accent-blue-soft: #DBEAFE;
+}
+
+/* DARK MODE override — Filament toggles .dark class on <html> */
+.dark {
+    --mt-bg:              #09090B;         /* page background (zinc-950) */
+    --mt-surface:         #18181B;         /* card surface (zinc-900) */
+    --mt-surface-2:       #27272A;         /* secondary surface (zinc-800) */
+    --mt-surface-3:       #3F3F46;         /* table row hover (zinc-700) */
+    --mt-border:          #3F3F46;         /* subtle border (zinc-700) */
+    --mt-border-soft:     #27272A;         /* very subtle (zinc-800) */
+    --mt-text:            #FAFAFA;         /* primary text (zinc-50) */
+    --mt-text-muted:      #A1A1AA;         /* secondary text (zinc-400) */
+    --mt-accent-red:      #F87171;         /* lighter red for dark bg */
+    --mt-accent-red-soft: rgba(248, 113, 113, 0.15);
+    --mt-accent-green:    #4ADE80;
+    --mt-accent-green-soft: rgba(74, 222, 128, 0.15);
+    --mt-accent-amber:    #FBBF24;
+    --mt-accent-amber-soft: rgba(251, 191, 36, 0.15);
+    --mt-accent-blue:     #60A5FA;
+    --mt-accent-blue-soft: rgba(96, 165, 250, 0.15);
 }
 
 /* ===== Typography ===== */
@@ -418,7 +446,7 @@ textarea:focus {
 
 /* Subtotal & grand total rows */
 .report-row-subtotal td {
-    background: #FAFAFA !important;
+    background: var(--mt-surface-3) !important;
     font-weight: 600;
     border-top: 1px solid var(--mt-border-soft);
 }
@@ -432,8 +460,8 @@ textarea:focus {
 }
 
 .report-row-grand td {
-    background: #18181B !important;
-    color: #FFFFFF !important;
+    background: var(--mt-text) !important;
+    color: var(--mt-surface) !important;
     font-weight: 700;
     font-size: 1rem;
     padding: 1rem;
@@ -441,7 +469,7 @@ textarea:focus {
 
 .report-row-grand td.mono,
 .report-row-grand td.code {
-    color: #FFFFFF !important;
+    color: var(--mt-surface) !important;
 }
 
 /* Balance validation badge */
@@ -504,7 +532,7 @@ textarea:focus {
 
 .report-bs-total-card {
     background: var(--mt-text);
-    color: #FFFFFF;
+    color: var(--mt-surface);
     border-radius: 0.75rem;
     padding: 1rem 1.25rem;
     text-align: right;
@@ -514,7 +542,7 @@ textarea:focus {
     font-size: 0.7rem;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #A1A1AA;
+    color: var(--mt-text-muted);
     margin-bottom: 0.25rem;
 }
 
@@ -653,7 +681,7 @@ textarea:focus {
 }
 
 .je-balance-empty .je-balance-pill {
-    background: #FFFFFF;
+    background: var(--mt-surface);
     color: var(--mt-text-muted);
     border: 1px solid var(--mt-border);
 }
@@ -669,6 +697,16 @@ textarea:focus {
     color: #047857;
 }
 
+.dark .je-balance-balanced {
+    background: rgba(34, 197, 94, 0.08);
+    border-color: rgba(34, 197, 94, 0.3);
+}
+
+.dark .je-balance-balanced .je-balance-pill {
+    background: rgba(34, 197, 94, 0.15);
+    color: #4ADE80;
+}
+
 /* State: unbalanced (merah lembut) */
 .je-balance-unbalanced {
     background: #FEF2F2;
@@ -678,6 +716,16 @@ textarea:focus {
 .je-balance-unbalanced .je-balance-pill {
     background: #FEE2E2;
     color: #B91C1C;
+}
+
+.dark .je-balance-unbalanced {
+    background: rgba(239, 68, 68, 0.08);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.dark .je-balance-unbalanced .je-balance-pill {
+    background: rgba(239, 68, 68, 0.15);
+    color: #F87171;
 }
 
 /* Responsive: tumpuk di mobile */
@@ -778,9 +826,9 @@ textarea:focus {
 
 /* === Adjust Filament's existing simple layout untuk halaman login === */
 
-/* Body background bersih (right side area) */
+/* Body background bersih (right side area) — dark-aware */
 body.fi-body:has(.mt-login-side) {
-    background: #FFFFFF !important;
+    background: var(--mt-surface) !important;
 }
 
 /* Posisikan card login di kanan (overlap sedikit dengan panel kiri) */
@@ -804,7 +852,7 @@ body:has(.mt-login-side) .fi-simple-main-ctn {
 }
 
 body:has(.mt-login-side) .fi-simple-main {
-    background: #FFFFFF !important;
+    background: var(--mt-surface) !important;
     border: 1px solid var(--mt-border) !important;
     border-radius: 1rem !important;
     box-shadow: 0 10px 40px rgba(10, 18, 50, 0.15) !important;

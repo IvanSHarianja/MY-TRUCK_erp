@@ -43,7 +43,7 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->login()
             ->brandName('MY-TRUCK')
-            ->defaultThemeMode(ThemeMode::Light)
+            ->defaultThemeMode(ThemeMode::System)  // ikut OS user, bisa toggle manual ke Light/Dark via UI
             ->colors([
                 'primary' => Color::Zinc,
                 'gray'    => Color::Neutral,

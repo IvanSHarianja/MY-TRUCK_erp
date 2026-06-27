@@ -12,8 +12,18 @@
             $columns[] = ['id' => $tanpaLiniId, 'code' => 'NONE', 'name' => 'Tanpa Lini', 'color' => '#94A3B8'];
         }
 
-        // Helper untuk warna teks laba/rugi
-        $colorLabaRugi = fn ($n) => $n > 0 ? '#16a34a' : ($n < 0 ? '#dc2626' : '#64748b');
+        // Helper warna teks laba/rugi — pakai CSS variables yang auto adjust di dark mode
+        $colorLabaRugi = fn ($n) => $n > 0
+            ? 'var(--mt-accent-green)'
+            : ($n < 0 ? 'var(--mt-accent-red)' : 'var(--mt-text-muted)');
+
+        // Semantic backgrounds — rgba transparent, work di light & dark mode
+        $bgTotalCol     = 'background: rgba(127, 127, 127, 0.08);';     // total column header/cell
+        $bgTotalSubtle  = 'background: rgba(127, 127, 127, 0.05);';     // inner total cell
+        $bgTotalRevenue = 'background: rgba(59, 130, 246, 0.12);';      // total pendapatan
+        $bgTotalCost    = 'background: rgba(245, 158, 11, 0.12);';      // total HPP/Beban
+        $bgLabaRow      = 'background: rgba(34, 197, 94, 0.08);';       // laba kotor/bersih row
+        $bgLabaTotal    = 'background: rgba(34, 197, 94, 0.18);';       // laba total cell
     @endphp
 
     <div class="report-card">
@@ -41,7 +51,7 @@
                                 <div style="font-size: 10px; font-weight: 500; opacity: 0.7;">{{ $buArr['name'] }}</div>
                             </th>
                         @endforeach
-                        <th class="text-right" style="background: #f1f5f9; font-weight: 800;">TOTAL</th>
+                        <th class="text-right" style="{{ $bgTotalCol }} font-weight: 800;">TOTAL</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -52,14 +62,14 @@
                     @foreach ($revenueRows as $row)
                         <tr>
                             <td>
-                                <span style="font-family: monospace; color: #64748b; font-size: 11px;">{{ $row['code'] }}</span>
+                                <span style="font-family: monospace; color: var(--mt-text-muted); font-size: 11px;">{{ $row['code'] }}</span>
                                 {{ $row['name'] }}
                             </td>
                             @foreach ($columns as $bu)
                                 @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
                                 <td class="text-right mono">{{ $fmt($row['perLini'][$buId] ?? 0) }}</td>
                             @endforeach
-                            <td class="text-right mono" style="background: #f8fafc; font-weight: 600;">{{ $fmt($row['total']) }}</td>
+                            <td class="text-right mono" style="{{ $bgTotalSubtle }} font-weight: 600;">{{ $fmt($row['total']) }}</td>
                         </tr>
                     @endforeach
                     <tr class="report-row-subtotal">
@@ -68,7 +78,7 @@
                             @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
                             <td class="text-right mono">{{ $fmt($revenuePerLini[$buId] ?? 0) }}</td>
                         @endforeach
-                        <td class="text-right mono" style="background: #e0f2fe; font-weight: 800;">{{ $fmt($totalRevenue) }}</td>
+                        <td class="text-right mono" style="{{ $bgTotalRevenue }} font-weight: 800;">{{ $fmt($totalRevenue) }}</td>
                     </tr>
 
                     {{-- ============ HPP ============ --}}
@@ -78,14 +88,14 @@
                     @foreach ($hppRows as $row)
                         <tr>
                             <td>
-                                <span style="font-family: monospace; color: #64748b; font-size: 11px;">{{ $row['code'] }}</span>
+                                <span style="font-family: monospace; color: var(--mt-text-muted); font-size: 11px;">{{ $row['code'] }}</span>
                                 {{ $row['name'] }}
                             </td>
                             @foreach ($columns as $bu)
                                 @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
                                 <td class="text-right mono">{{ $fmt($row['perLini'][$buId] ?? 0) }}</td>
                             @endforeach
-                            <td class="text-right mono" style="background: #f8fafc; font-weight: 600;">{{ $fmt($row['total']) }}</td>
+                            <td class="text-right mono" style="{{ $bgTotalSubtle }} font-weight: 600;">{{ $fmt($row['total']) }}</td>
                         </tr>
                     @endforeach
                     <tr class="report-row-subtotal">
@@ -94,11 +104,11 @@
                             @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
                             <td class="text-right mono">({{ $fmt($totalHppPerLini[$buId] ?? 0) }})</td>
                         @endforeach
-                        <td class="text-right mono" style="background: #fef3c7; font-weight: 800;">({{ $fmt($totalHpp) }})</td>
+                        <td class="text-right mono" style="{{ $bgTotalCost }} font-weight: 800;">({{ $fmt($totalHpp) }})</td>
                     </tr>
 
                     {{-- ============ LABA KOTOR ============ --}}
-                    <tr class="report-row-subtotal" style="background: #ecfdf5;">
+                    <tr class="report-row-subtotal" style="{{ $bgLabaRow }}">
                         <td><strong>III. LABA KOTOR</strong></td>
                         @foreach ($columns as $bu)
                             @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
@@ -106,7 +116,7 @@
                                 {{ $fmt($labaKotorPerLini[$buId] ?? 0) }}
                             </td>
                         @endforeach
-                        <td class="text-right mono" style="background: #d1fae5; color: {{ $colorLabaRugi($totalLabaKotor) }}; font-weight: 800;">{{ $fmt($totalLabaKotor) }}</td>
+                        <td class="text-right mono" style="{{ $bgLabaTotal }} color: {{ $colorLabaRugi($totalLabaKotor) }}; font-weight: 800;">{{ $fmt($totalLabaKotor) }}</td>
                     </tr>
 
                     {{-- ============ BEBAN OPERASIONAL ============ --}}
@@ -116,14 +126,14 @@
                     @foreach ($bebanOpRows as $row)
                         <tr>
                             <td>
-                                <span style="font-family: monospace; color: #64748b; font-size: 11px;">{{ $row['code'] }}</span>
+                                <span style="font-family: monospace; color: var(--mt-text-muted); font-size: 11px;">{{ $row['code'] }}</span>
                                 {{ $row['name'] }}
                             </td>
                             @foreach ($columns as $bu)
                                 @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
                                 <td class="text-right mono">{{ $fmt($row['perLini'][$buId] ?? 0) }}</td>
                             @endforeach
-                            <td class="text-right mono" style="background: #f8fafc; font-weight: 600;">{{ $fmt($row['total']) }}</td>
+                            <td class="text-right mono" style="{{ $bgTotalSubtle }} font-weight: 600;">{{ $fmt($row['total']) }}</td>
                         </tr>
                     @endforeach
                     <tr class="report-row-subtotal">
@@ -132,11 +142,11 @@
                             @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
                             <td class="text-right mono">({{ $fmt($totalBebanOpPerLini[$buId] ?? 0) }})</td>
                         @endforeach
-                        <td class="text-right mono" style="background: #fef3c7; font-weight: 800;">({{ $fmt($totalBebanOp) }})</td>
+                        <td class="text-right mono" style="{{ $bgTotalCost }} font-weight: 800;">({{ $fmt($totalBebanOp) }})</td>
                     </tr>
 
                     {{-- ============ LABA BERSIH ============ --}}
-                    <tr class="report-row-subtotal" style="background: #ecfdf5;">
+                    <tr class="report-row-subtotal" style="{{ $bgLabaRow }}">
                         <td><strong>V. LABA (RUGI) BERSIH</strong></td>
                         @foreach ($columns as $bu)
                             @php $buId = is_array($bu) ? $bu['id'] : $bu->id; @endphp
@@ -144,11 +154,11 @@
                                 {{ $fmt($labaBersihPerLini[$buId] ?? 0) }}
                             </td>
                         @endforeach
-                        <td class="text-right mono" style="background: #d1fae5; color: {{ $colorLabaRugi($totalLabaBersih) }}; font-weight: 800;">{{ $fmt($totalLabaBersih) }}</td>
+                        <td class="text-right mono" style="{{ $bgLabaTotal }} color: {{ $colorLabaRugi($totalLabaBersih) }}; font-weight: 800;">{{ $fmt($totalLabaBersih) }}</td>
                     </tr>
 
                     {{-- ============ MARGIN ============ --}}
-                    <tr style="background: #f1f5f9;">
+                    <tr style="{{ $bgTotalCol }}">
                         <td style="font-style: italic; font-size: 12px;">Margin Laba (%)</td>
                         @foreach ($columns as $bu)
                             @php
@@ -168,13 +178,13 @@
         </div>
 
         @if ($totalRevenue == 0)
-            <div style="padding: 24px; text-align: center; color: #64748b;">
+            <div style="padding: 24px; text-align: center; color: var(--mt-text-muted);">
                 <em>Belum ada transaksi pendapatan atau beban pada periode ini.</em>
             </div>
         @endif
     </div>
 
-    {{-- Insight Box --}}
+    {{-- Insight Box — dark-aware via rgba semantic colors --}}
     @if ($totalRevenue > 0)
         @php
             $rankings = collect($revenuePerLini)
@@ -191,9 +201,9 @@
             $bestMarginBuId = $bestMargin->keys()->first();
             $bestMarginBu = $businessUnits->firstWhere('id', $bestMarginBuId);
         @endphp
-        <div style="margin-top: 16px; padding: 16px; background: linear-gradient(135deg, #eff6ff, #dbeafe); border-radius: 8px; border-left: 4px solid #2563eb;">
-            <div style="font-weight: 700; color: #1e40af; margin-bottom: 8px;">📊 Insight Cepat</div>
-            <ul style="margin: 0; padding-left: 20px; color: #1e293b; font-size: 13px; line-height: 1.8;">
+        <div style="margin-top: 16px; padding: 16px; background: rgba(59, 130, 246, 0.10); border-radius: 8px; border-left: 4px solid var(--mt-accent-blue); color: var(--mt-text);">
+            <div style="font-weight: 700; color: var(--mt-accent-blue); margin-bottom: 8px;">📊 Insight Cepat</div>
+            <ul style="margin: 0; padding-left: 20px; color: var(--mt-text); font-size: 13px; line-height: 1.8;">
                 @if ($topBu)
                     <li><strong>{{ $topBu->name }}</strong> menyumbang <strong>{{ $topPct }}%</strong> pendapatan ({{ $fmt($topVal) }})</li>
                 @endif

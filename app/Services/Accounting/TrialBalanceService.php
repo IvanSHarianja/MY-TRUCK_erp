@@ -141,14 +141,29 @@ class TrialBalanceService
     }
 
     /**
-     * Saldo satu akun (dipakai service lain seperti CashFlow).
+     * Saldo satu akun (dipakai service lain seperti CashFlow & EquityStatement).
+     *
+     * DESCENDANT-AWARE (sejak F11.11):
+     * Kalau akun dengan code tersebut adalah HEADER (punya sub-akun),
+     * saldo dihitung sebagai SUM dari semua descendant.
+     *
+     * Contoh: 331100 Modal Pemilik di-split jadi 331100-01 dan 331100-02,
+     * getAccountBalance('331100') akan return total saldo dari kedua child.
      */
     public function getAccountBalance(int $companyId, string $accountCode, int $year, ?int $month = null): float
     {
+        // Ambil semua descendant IDs (termasuk akun itu sendiri kalau leaf)
+        $accountIds = Account::descendantIds($accountCode, $companyId, includeSelf: true);
+
+        if (empty($accountIds)) {
+            return 0.0;
+        }
+
         $balances = $this->getBalances($companyId, $year, $month, includeZero: true);
 
-        $row = $balances->firstWhere('code', $accountCode);
-
-        return $row ? (float) $row->saldo : 0.0;
+        // Aggregate saldo dari semua akun (parent + children)
+        return (float) $balances
+            ->whereIn('account_id', $accountIds)
+            ->sum('saldo');
     }
 }

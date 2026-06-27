@@ -126,7 +126,7 @@ class ProjectsTable
                                         ->where('company_id', $record->company_id)
                                         ->where('is_active', true)
                                         ->where('code', 'like', '111%')
-                                        ->postable()  // ← hanya leaf
+                                        ->postable()
                                         ->orderBy('code')->get()
                                         ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])
                                         ->toArray();

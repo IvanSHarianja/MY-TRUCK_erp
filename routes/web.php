@@ -3,9 +3,14 @@
 use App\Http\Controllers\PdfController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+/**
+ * Root URL → redirect ke /admin.
+ *
+ * Filament otomatis handle:
+ *  - Belum login → tampil halaman login (/admin/login)
+ *  - Sudah login → ke dashboard tenant (/admin/{tenant-slug})
+ */
+Route::get('/', fn () => redirect('/admin'));
 
 /**
  * PDF Export Routes (auth required)

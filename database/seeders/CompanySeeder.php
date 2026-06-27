@@ -8,6 +8,16 @@ use App\Services\CompanyTemplateService;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 
+/**
+ * CompanySeeder — bikin company demo "PT Maju Terus" + assign user demo + seed template default.
+ *
+ * Template default via CompanyTemplateService:
+ *  - 53 akun COA (termasuk 221170 Uang Muka Proyek, 551600 Beban Subkontraktor)
+ *  - 5 BusinessUnit: RENT, ARMD, MATL, BONG, UMUM
+ *  - 7 Material default (Tanah Urug, Sirtu, Pasir, Batu, dll)
+ *
+ * Untuk demo master data (clients, vendors, assets, employees), lihat MasterDataDemoSeeder.
+ */
 class CompanySeeder extends Seeder
 {
     public function run(): void
@@ -37,5 +47,7 @@ class CompanySeeder extends Seeder
         ]);
 
         app(CompanyTemplateService::class)->seedDefaults($company);
+
+        $this->command?->info('✅ Company "PT Maju Terus" siap (admin: admin@mytruck.test / password)');
     }
 }

@@ -131,7 +131,7 @@ class MaterialSaleForm
                                     ->where('is_active', true)
                                     ->where('sub_category', 'aset_lancar')
                                     ->where('code', 'like', '111%')
-                                    ->postable();  // ← hanya leaf
+                                    ->postable();
                                 if ($tenant) {
                                     $query->where('company_id', $tenant->getKey());
                                 }

@@ -175,7 +175,7 @@ class InvoicesTable
                                     ->where('is_active', true)
                                     ->where('sub_category', 'aset_lancar')
                                     ->where('code', 'like', '111%')
-                                    ->postable()  // ← hanya leaf account
+                                    ->postable()
                                     ->orderBy('code')
                                     ->get()
                                     ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])

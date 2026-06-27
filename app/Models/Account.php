@@ -33,6 +33,63 @@ class Account extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        // === Validasi saat save: cek self-reference & cyclic reference ===
+        static::saving(function (Account $account) {
+            if (! $account->parent_code) return;
+
+            // Self-reference: parent_code tidak boleh = code sendiri
+            if ($account->parent_code === $account->code) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'parent_code' => "Akun tidak boleh menjadi parent dari dirinya sendiri ({$account->code}).",
+                ]);
+            }
+
+            // Cyclic check: parent_code yang dipilih tidak boleh ada di descendant akun ini
+            // (mencegah loop: A→B→A)
+            if ($account->exists && $account->code) {
+                $descendants = static::descendantIds($account->code, $account->company_id, includeSelf: false);
+                $parentRecord = static::withoutGlobalScopes()
+                    ->where('company_id', $account->company_id)
+                    ->where('code', $account->parent_code)
+                    ->first();
+
+                if ($parentRecord && in_array($parentRecord->id, $descendants)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages([
+                        'parent_code' => "Cyclic reference: akun [{$account->parent_code}] adalah sub-akun dari [{$account->code}]. "
+                            . "Tidak boleh dijadikan parent.",
+                    ]);
+                }
+            }
+        });
+
+        // === Proteksi delete ===
+        static::deleting(function (Account $account) {
+            // Block jika punya children (orphan prevention)
+            $childrenCount = static::withoutGlobalScopes()
+                ->where('company_id', $account->company_id)
+                ->where('parent_code', $account->code)
+                ->count();
+
+            if ($childrenCount > 0) {
+                throw new \RuntimeException(
+                    "Akun [{$account->code}] {$account->name} adalah HEADER dengan {$childrenCount} sub-akun. "
+                    . "Hapus semua sub-akun terlebih dahulu sebelum menghapus akun ini."
+                );
+            }
+
+            // Block jika sudah dipakai di journal entry
+            $usedInJournal = \App\Models\JournalEntryLine::where('account_id', $account->id)->exists();
+            if ($usedInJournal) {
+                throw new \RuntimeException(
+                    "Akun [{$account->code}] {$account->name} sudah memiliki transaksi jurnal. "
+                    . "Tidak bisa dihapus untuk menjaga integritas data akuntansi."
+                );
+            }
+        });
+    }
+
     /** Relasi parent (akun induk) via parent_code */
     public function parent(): BelongsTo
     {
