@@ -190,17 +190,33 @@ class PaymentService
 
     /**
      * Batalkan pembayaran: void journal entry-nya dan kurangi paid_amount invoice.
+     *
+     * Edge case yang di-handle defensif (log warning, tidak throw):
+     * - payment->journalEntry null (data anomali, seharusnya selalu ada dari pay()).
+     * - journalEntry sudah void di luar payment flow (mis. via journal admin).
+     *   Dalam kasus itu, cash entry sudah reversed, tapi status invoice masih
+     *   'lunas'/'sebagian'. reverse() akan sinkronkan status ke kondisi tanpa
+     *   payment ini — mencegah drift antara data invoice dan buku besar.
      */
     public function reverse(Payment $payment, ?string $reason = null): void
     {
         DB::transaction(function () use ($payment, $reason) {
-            if ($payment->journalEntry && $payment->journalEntry->isPosted()) {
+            if (! $payment->journalEntry) {
+                Log::warning("Payment {$payment->payment_number} tidak punya journalEntry saat di-reverse. "
+                    . 'Kemungkinan data anomali dari import atau bug sebelumnya.');
+            } elseif ($payment->journalEntry->isPosted()) {
                 $this->journalService->void($payment->journalEntry, $reason);
+            } else {
+                // Journal sudah void sebelumnya (mis. via journal admin) —
+                // skip void, tapi tetap sinkronkan invoice status.
+                Log::info("Payment {$payment->payment_number} di-reverse tapi journal "
+                    . "{$payment->journalEntry->entry_number} sudah tidak POSTED "
+                    . "(status: {$payment->journalEntry->status}). Skip void jurnal.");
             }
 
             $invoice = $payment->invoice;
             $newPaid = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-            $newStatus = $newPaid <= 0 ? 'terbit' : 'sebagian';
+            $newStatus = round($newPaid, 2) <= 0 ? 'terbit' : 'sebagian';
 
             $invoice->update([
                 'paid_amount' => $newPaid,

@@ -10,6 +10,7 @@ use App\Models\ProjectTermin;
 use App\Models\RentalContract;
 use App\Models\RentalLog;
 use App\Models\RitLog;
+use Illuminate\Support\Facades\DB;
 
 class InvoiceObserver
 {
@@ -19,6 +20,12 @@ class InvoiceObserver
      * - RENT: kurangi billed_jam, lepas rental_logs.invoice_id
      * - BONG: kurangi tertagih_pct, hapus project_termin record
      * - MATL: unlink material_sales.invoice_id (sale tetap exists)
+     *
+     * Rollback dibungkus DB::transaction supaya atomic — bila salah satu operasi
+     * (update counter atau detach log) gagal, seluruh cascade batal. Penting bila
+     * void ditrigger dari luar InvoiceService::void() (mis. Filament Edit langsung).
+     * Nested transaction aman: kalau caller sudah dalam transaction, Laravel pakai
+     * savepoint; kalau tidak, ini jadi transaction utama.
      */
     public function updated(Invoice $invoice): void
     {
@@ -27,13 +34,15 @@ class InvoiceObserver
             return;
         }
 
-        match ($invoice->source_type) {
-            'armada_contract' => $this->rollbackArmada($invoice),
-            'rental_contract' => $this->rollbackRental($invoice),
-            'project_termin'  => $this->rollbackProjectTermin($invoice),
-            'material_sale'   => $this->detachMaterialSale($invoice),
-            default           => null,
-        };
+        DB::transaction(function () use ($invoice) {
+            match ($invoice->source_type) {
+                'armada_contract' => $this->rollbackArmada($invoice),
+                'rental_contract' => $this->rollbackRental($invoice),
+                'project_termin'  => $this->rollbackProjectTermin($invoice),
+                'material_sale'   => $this->detachMaterialSale($invoice),
+                default           => null,
+            };
+        });
     }
 
     private function rollbackArmada(Invoice $invoice): void

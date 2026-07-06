@@ -240,4 +240,77 @@ class JournalService
 
         $entry->delete();
     }
+
+    /**
+     * Atomic create JournalEntry + lines dengan retry pada unique-constraint collision.
+     *
+     * Race condition di `generateEntryNumber()` (SELECT max → INSERT) bisa menghasilkan
+     * entry_number duplikat saat dua request bersamaan. Karena tabel `journal_entries`
+     * punya unique (company_id, entry_number), INSERT yang collision akan throw
+     * UniqueConstraintViolationException — kita tangkap & retry dengan nomor baru.
+     *
+     * Pola pakai:
+     * ```php
+     * $journal = $journalService->createEntryWithLines(
+     *     $company, $date,
+     *     entryDataFactory: fn (string $entryNumber) => [
+     *         'company_id'       => $company->id,
+     *         'entry_number'     => $entryNumber,
+     *         'entry_date'       => $date,
+     *         // ... field lain
+     *     ],
+     *     linesFactory: fn (JournalEntry $entry) => [
+     *         ['account_id' => 1, 'debit' => 1000, 'kredit' => 0, 'sort_order' => 1],
+     *         ['account_id' => 2, 'debit' => 0, 'kredit' => 1000, 'sort_order' => 2],
+     *     ],
+     * );
+     * ```
+     *
+     * @param  Company         $company
+     * @param  CarbonInterface $date
+     * @param  callable        $entryDataFactory  fn(string $entryNumber): array $entryData
+     * @param  callable        $linesFactory      fn(JournalEntry $entry): array<int, array>
+     * @param  int             $maxAttempts       default 5, exponential backoff
+     */
+    public function createEntryWithLines(
+        Company $company,
+        CarbonInterface $date,
+        callable $entryDataFactory,
+        callable $linesFactory,
+        int $maxAttempts = 5,
+    ): JournalEntry {
+        $attempt = 0;
+        $lastException = null;
+
+        while ($attempt < $maxAttempts) {
+            $attempt++;
+            try {
+                return DB::transaction(function () use ($company, $date, $entryDataFactory, $linesFactory) {
+                    $entryNumber = $this->generateEntryNumber($company, $date);
+
+                    /** @var JournalEntry $entry */
+                    $entry = JournalEntry::create($entryDataFactory($entryNumber));
+
+                    foreach ($linesFactory($entry) as $i => $lineData) {
+                        JournalEntryLine::create(array_merge(
+                            ['journal_entry_id' => $entry->id, 'sort_order' => $i + 1],
+                            $lineData,
+                        ));
+                    }
+
+                    return $entry->load('lines.account');
+                });
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                // Retry dengan exponential backoff + jitter (10–50ms × 2^attempt)
+                $lastException = $e;
+                $baseSleep = 10_000 * (2 ** ($attempt - 1));
+                usleep(random_int($baseSleep, $baseSleep + 40_000));
+            }
+        }
+
+        // Setelah maxAttempts, throw exception terakhir
+        throw $lastException ?? new \RuntimeException(
+            "Gagal generate entry_number unik setelah {$maxAttempts} percobaan."
+        );
+    }
 }
