@@ -17,14 +17,25 @@ class RitLog extends Model
         'driver_id',
         'log_date',
         'rit_count',
+        'solar_liter',
+        'uang_jalan_supir',
+        'uang_makan_supir',
+        'premi_supir',
+        'override_biaya',
+        'journal_entry_id',
         'invoice_id',
         'notes',
         'created_by',
     ];
 
     protected $casts = [
-        'log_date'  => 'date',
-        'rit_count' => 'integer',
+        'log_date'         => 'date',
+        'rit_count'        => 'integer',
+        'solar_liter'      => 'decimal:2',
+        'uang_jalan_supir' => 'decimal:2',
+        'uang_makan_supir' => 'decimal:2',
+        'premi_supir'      => 'decimal:2',
+        'override_biaya'   => 'boolean',
     ];
 
     public function armadaContract(): BelongsTo
@@ -45,6 +56,11 @@ class RitLog extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function journalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class);
     }
 
     public function createdBy(): BelongsTo

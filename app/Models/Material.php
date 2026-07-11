@@ -14,6 +14,7 @@ class Material extends Model
         'code',
         'name',
         'harga_per_satuan',
+        'harga_pokok',
         'satuan',
         'notes',
         'is_active',
@@ -21,7 +22,8 @@ class Material extends Model
 
     protected $casts = [
         'harga_per_satuan' => 'decimal:2',
-        'is_active' => 'boolean',
+        'harga_pokok'      => 'decimal:2',
+        'is_active'        => 'boolean',
     ];
 
     public function getDisplayNameAttribute(): string

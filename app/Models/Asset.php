@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Asset extends Model
 {
@@ -44,6 +45,28 @@ class Asset extends Model
     public function defaultBusinessUnit(): BelongsTo
     {
         return $this->belongsTo(BusinessUnit::class, 'default_business_unit_id');
+    }
+
+    public function maintenanceLogs(): HasMany
+    {
+        return $this->hasMany(AssetMaintenanceLog::class)->orderBy('maintenance_date', 'desc');
+    }
+
+    /**
+     * Total biaya maintenance sepanjang hidup aset.
+     * Dipakai widget "Top 5 aset boros maintenance" nanti.
+     */
+    public function getTotalMaintenanceCostAttribute(): float
+    {
+        return (float) $this->maintenanceLogs()->sum('cost');
+    }
+
+    /**
+     * Riwayat maintenance terakhir — dipakai UI table (badge tanggal).
+     */
+    public function getLastMaintenanceAttribute(): ?AssetMaintenanceLog
+    {
+        return $this->maintenanceLogs()->first();
     }
 
     /**

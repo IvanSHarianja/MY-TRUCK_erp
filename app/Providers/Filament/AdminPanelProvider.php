@@ -11,6 +11,7 @@ use App\Filament\Widgets\InvoiceStatsWidget;
 use App\Filament\Widgets\MonthlyProfitTrendWidget;
 use App\Filament\Widgets\RevenueByBusinessUnitWidget;
 use App\Filament\Widgets\RevenueMixBarWidget;
+use App\Filament\Widgets\TopMaintenanceCostWidget;
 use App\Models\Company;
 use Filament\Enums\ThemeMode;
 use Filament\Support\Enums\Width;
@@ -90,6 +91,7 @@ class AdminPanelProvider extends PanelProvider
                 RevenueMixBarWidget::class,
                 RevenueByBusinessUnitWidget::class,
                 MonthlyProfitTrendWidget::class,
+                TopMaintenanceCostWidget::class,
             ])
             ->renderHook(
                 PanelsRenderHook::HEAD_END,

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Assets;
 use App\Filament\Resources\Assets\Pages\CreateAsset;
 use App\Filament\Resources\Assets\Pages\EditAsset;
 use App\Filament\Resources\Assets\Pages\ListAssets;
+use App\Filament\Resources\Assets\RelationManagers\MaintenanceLogsRelationManager;
 use App\Filament\Resources\Assets\Schemas\AssetForm;
 use App\Filament\Resources\Assets\Tables\AssetsTable;
 use App\Models\Asset;
@@ -36,6 +37,13 @@ class AssetResource extends Resource
     public static function table(Table $table): Table
     {
         return AssetsTable::configure($table);
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            MaintenanceLogsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

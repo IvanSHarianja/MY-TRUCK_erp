@@ -27,11 +27,20 @@ class MaterialForm
                     ->placeholder('contoh: Sirtu, Pasir Urug, Batu Belah'),
 
                 TextInput::make('harga_per_satuan')
-                    ->label('Harga per Satuan (Rp)')
+                    ->label('Harga Jual per Satuan')
                     ->required()
                     ->numeric()
                     ->default(0)
-                    ->prefix('Rp'),
+                    ->prefix('Rp')
+                    ->helperText('Harga jual default ke klien.'),
+
+                TextInput::make('harga_pokok')
+                    ->label('Harga Pokok per Satuan (HPP)')
+                    ->required()
+                    ->numeric()
+                    ->default(0)
+                    ->prefix('Rp')
+                    ->helperText('Biaya modal per satuan. Dipakai auto-post jurnal HPP setiap penjualan. Isi 0 untuk skip HPP posting (laba kotor jadi = harga jual).'),
 
                 Select::make('satuan')
                     ->label('Satuan')

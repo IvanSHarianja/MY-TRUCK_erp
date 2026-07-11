@@ -4,18 +4,23 @@ namespace App\Filament\Resources\ArmadaContracts\RelationManagers;
 
 use App\Models\Asset;
 use App\Models\Employee;
+use App\Services\Accounting\OperationalCostService;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\Toggle;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
 
 class RitLogsRelationManager extends RelationManager
 {
@@ -70,7 +75,93 @@ class RitLogsRelationManager extends RelationManager
                     ->required()
                     ->numeric()
                     ->minValue(1)
-                    ->step(1),
+                    ->step(1)
+                    ->live(onBlur: true),
+
+                TextInput::make('solar_liter')
+                    ->label('Solar Actual (Liter)')
+                    ->numeric()
+                    ->step(0.1)
+                    ->suffix('L')
+                    ->live(onBlur: true)
+                    ->helperText('Isi bila mau catat actual. Bila override_biaya=OFF, dianggap catatan (kalkulasi jurnal pakai estimasi dari kontrak).'),
+
+                Toggle::make('override_biaya')
+                    ->label('Override biaya operasional')
+                    ->helperText('Aktifkan bila biaya hari ini berbeda dari standar kontrak.')
+                    ->default(false)
+                    ->live()
+                    ->columnSpanFull(),
+
+                TextInput::make('uang_jalan_supir')
+                    ->label('Uang Jalan (override)')
+                    ->numeric()
+                    ->prefix('Rp')
+                    ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
+                    ->live(onBlur: true),
+
+                TextInput::make('uang_makan_supir')
+                    ->label('Uang Makan (override)')
+                    ->numeric()
+                    ->prefix('Rp')
+                    ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
+                    ->live(onBlur: true),
+
+                TextInput::make('premi_supir')
+                    ->label('Premi (override)')
+                    ->numeric()
+                    ->prefix('Rp')
+                    ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
+                    ->live(onBlur: true)
+                    ->columnSpanFull(),
+
+                Placeholder::make('cost_preview')
+                    ->label('Preview Biaya Operasional')
+                    ->content(function ($livewire, Get $get): HtmlString {
+                        $contract = $livewire->getOwnerRecord();
+                        if (! $contract) {
+                            return new HtmlString('<div style="opacity:0.6;">Kontrak tidak ditemukan.</div>');
+                        }
+
+                        if (! $contract->include_bbm && ! $contract->include_operator) {
+                            return new HtmlString('<div style="opacity:0.6;">Kontrak tipe <strong>Alat Saja</strong> — tidak ada biaya operasional dari PT.</div>');
+                        }
+
+                        $service = app(OperationalCostService::class);
+                        $company = Filament::getTenant();
+                        $hargaBbm = $service->resolveHargaBbm($contract->harga_bbm_per_liter, $company);
+
+                        $cost = $service->calculateRitCost([
+                            'rit_count'           => $get('rit_count'),
+                            'override_biaya'      => (bool) $get('override_biaya'),
+                            'include_bbm'         => (bool) $contract->include_bbm,
+                            'include_operator'    => (bool) $contract->include_operator,
+                            'bbm_liter_per_rit'   => $contract->bbm_liter_per_rit,
+                            'harga_bbm_per_liter' => $hargaBbm,
+                            'gaji_supir_per_hari' => $contract->gaji_supir_per_hari,
+                            'uang_makan_per_hari' => $contract->uang_makan_per_hari,
+                            'uang_jalan_per_rit'  => $contract->uang_jalan_per_rit,
+                            'premi_per_rit'       => $contract->premi_per_rit,
+                            'override_solar_liter'=> $get('solar_liter'),
+                            'override_uang_jalan' => $get('uang_jalan_supir'),
+                            'override_uang_makan' => $get('uang_makan_supir'),
+                            'override_premi'      => $get('premi_supir'),
+                        ]);
+
+                        $fmt = fn ($n) => 'Rp ' . number_format((float) $n, 0, ',', '.');
+
+                        return new HtmlString(
+                            '<div style="font-size:13px;line-height:1.7;padding:8px 12px;background:rgba(127,127,127,0.06);border-radius:6px;">'
+                            . '<div>BBM: <strong>' . $fmt($cost['bbm']) . '</strong></div>'
+                            . '<div>Gaji supir: <strong>' . $fmt($cost['gaji']) . '</strong></div>'
+                            . '<div>Uang makan: <strong>' . $fmt($cost['makan']) . '</strong></div>'
+                            . '<div>Uang jalan: <strong>' . $fmt($cost['uang_jalan']) . '</strong></div>'
+                            . '<div>Premi: <strong>' . $fmt($cost['premi']) . '</strong></div>'
+                            . '<div style="margin-top:6px;padding-top:6px;border-top:1px solid rgba(127,127,127,0.25);">Total: <strong>' . $fmt($cost['total']) . '</strong></div>'
+                            . '</div>'
+                        );
+                    })
+                    ->columnSpanFull(),
 
                 Textarea::make('notes')
                     ->label('Catatan')

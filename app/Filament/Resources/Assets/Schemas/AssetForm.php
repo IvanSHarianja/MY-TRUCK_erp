@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Assets\Schemas;
 
+use App\Models\BusinessUnit;
+use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -82,6 +84,21 @@ class AssetForm
                     ->searchable()
                     ->preload()
                     ->helperText('Akun HEADER otomatis disembunyikan — pilih sub-akun spesifik.'),
+
+                Select::make('default_business_unit_id')
+                    ->label('Lini Bisnis Default')
+                    ->native(false)
+                    ->options(function () {
+                        $tenant = Filament::getTenant();
+                        $q = BusinessUnit::query()->where('is_active', true);
+                        if ($tenant) {
+                            $q->where('company_id', $tenant->getKey());
+                        }
+                        return $q->orderBy('code')->get()
+                            ->mapWithKeys(fn ($bu) => [$bu->id => "[{$bu->code}] {$bu->name}"])
+                            ->toArray();
+                    })
+                    ->helperText('Dipakai untuk alokasi biaya penyusutan & maintenance. Kosongkan → auto-fallback berdasar jenis aset (dump_truck→ARMD, excavator→RENT, lainnya→UMUM).'),
 
                 Select::make('status')
                     ->label('Status')

@@ -27,7 +27,15 @@ class RentalContract extends Model
         'contract_number',
         'client_id',
         'asset_id',
+        'tipe_rental',
+        'include_bbm',
+        'include_operator',
         'tarif_per_jam',
+        'bbm_liter_per_jam',
+        'harga_bbm_per_liter',
+        'gaji_operator_per_hari',
+        'uang_makan_per_hari',
+        'premi_per_jam',
         'lokasi_kerja',
         'billed_jam',
         'status',
@@ -38,10 +46,17 @@ class RentalContract extends Model
     ];
 
     protected $casts = [
-        'tarif_per_jam' => 'decimal:2',
-        'billed_jam'    => 'decimal:2',
-        'started_at'    => 'date',
-        'ended_at'      => 'date',
+        'tarif_per_jam'          => 'decimal:2',
+        'billed_jam'             => 'decimal:2',
+        'started_at'             => 'date',
+        'ended_at'               => 'date',
+        'include_bbm'            => 'boolean',
+        'include_operator'       => 'boolean',
+        'bbm_liter_per_jam'      => 'decimal:2',
+        'harga_bbm_per_liter'    => 'decimal:2',
+        'gaji_operator_per_hari' => 'decimal:2',
+        'uang_makan_per_hari'    => 'decimal:2',
+        'premi_per_jam'          => 'decimal:2',
     ];
 
     public function client(): BelongsTo

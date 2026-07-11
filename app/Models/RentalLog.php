@@ -21,17 +21,24 @@ class RentalLog extends Model
         'jam_kerja',
         'solar_liter',
         'voucher_solar',
+        'uang_makan_operator',
+        'premi_operator',
+        'override_biaya',
+        'journal_entry_id',
         'invoice_id',
         'notes',
         'created_by',
     ];
 
     protected $casts = [
-        'log_date'    => 'date',
-        'hm_awal'     => 'decimal:2',
-        'hm_akhir'    => 'decimal:2',
-        'jam_kerja'   => 'decimal:2',
-        'solar_liter' => 'decimal:2',
+        'log_date'            => 'date',
+        'hm_awal'             => 'decimal:2',
+        'hm_akhir'            => 'decimal:2',
+        'jam_kerja'           => 'decimal:2',
+        'solar_liter'         => 'decimal:2',
+        'uang_makan_operator' => 'decimal:2',
+        'premi_operator'      => 'decimal:2',
+        'override_biaya'      => 'boolean',
     ];
 
     public function rentalContract(): BelongsTo
@@ -52,6 +59,11 @@ class RentalLog extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    public function journalEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class);
     }
 
     public function createdBy(): BelongsTo

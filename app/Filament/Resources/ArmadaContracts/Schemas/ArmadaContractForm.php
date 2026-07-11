@@ -7,6 +7,8 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 
 class ArmadaContractForm
@@ -71,6 +73,84 @@ class ArmadaContractForm
                             ->label('Catatan')
                             ->rows(2)
                             ->columnSpanFull(),
+                    ]),
+
+                Section::make('Tipe Kontrak & Biaya Operasional')
+                    ->description('Tentukan siapa yang menanggung BBM & supir. Untuk All In / Semi, isi standar biaya per rit & per hari — nanti auto-terpakai di jurnal setiap log ritase.')
+                    ->columns(2)
+                    ->schema([
+                        Select::make('tipe_kontrak')
+                            ->label('Tipe Kontrak')
+                            ->native(false)
+                            ->required()
+                            ->default('all_in')
+                            ->options([
+                                'all_in'    => 'All In (BBM + Supir dari PT)',
+                                'semi'      => 'Semi (Supir dari PT, BBM klien)',
+                                'alat_saja' => 'Alat Saja (Klien tanggung semua)',
+                            ])
+                            ->live()
+                            ->afterStateUpdated(function (?string $state, Set $set) {
+                                $set('include_bbm', $state === 'all_in');
+                                $set('include_operator', in_array($state, ['all_in', 'semi'], true));
+                            })
+                            ->columnSpanFull(),
+                    ]),
+
+                Section::make('Standar Biaya BBM (per rit)')
+                    ->description('Estimasi konsumsi BBM per rit tergantung jarak rute. Kosongkan harga untuk pakai default company.')
+                    ->columns(2)
+                    ->visible(fn (Get $get): bool => (bool) $get('include_bbm'))
+                    ->schema([
+                        TextInput::make('bbm_liter_per_rit')
+                            ->label('Konsumsi BBM per Rit')
+                            ->numeric()
+                            ->step(0.1)
+                            ->minValue(0.1)
+                            ->suffix('L/rit')
+                            ->placeholder('contoh: 15')
+                            ->required(fn (Get $get): bool => (bool) $get('include_bbm')),
+
+                        TextInput::make('harga_bbm_per_liter')
+                            ->label('Harga BBM (Rp/liter)')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('Kosongkan → pakai default company')
+                            ->helperText('Isi bila harga solar berbeda dari default company.'),
+                    ]),
+
+                Section::make('Standar Biaya Supir')
+                    ->description('Gaji & uang makan flat per hari kerja. Uang jalan & premi per rit.')
+                    ->columns(2)
+                    ->visible(fn (Get $get): bool => (bool) $get('include_operator'))
+                    ->schema([
+                        TextInput::make('gaji_supir_per_hari')
+                            ->label('Gaji Supir per Hari')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('contoh: 200000')
+                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+
+                        TextInput::make('uang_makan_per_hari')
+                            ->label('Uang Makan per Hari')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('contoh: 50000')
+                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+
+                        TextInput::make('uang_jalan_per_rit')
+                            ->label('Uang Jalan per Rit')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('contoh: 25000')
+                            ->helperText('Biaya tol/parkir/dsb per trip. Opsional.'),
+
+                        TextInput::make('premi_per_rit')
+                            ->label('Premi per Rit (opsional)')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('contoh: 10000')
+                            ->helperText('Insentif per rit. Kosongkan bila tidak ada.'),
                     ]),
             ]);
     }

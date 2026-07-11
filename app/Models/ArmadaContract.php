@@ -26,8 +26,17 @@ class ArmadaContract extends Model
         'company_id',
         'contract_number',
         'client_id',
+        'tipe_kontrak',
+        'include_bbm',
+        'include_operator',
         'route_description',
         'tarif_per_rit',
+        'bbm_liter_per_rit',
+        'harga_bbm_per_liter',
+        'gaji_supir_per_hari',
+        'uang_makan_per_hari',
+        'uang_jalan_per_rit',
+        'premi_per_rit',
         'billed_rit',
         'status',
         'started_at',
@@ -37,10 +46,18 @@ class ArmadaContract extends Model
     ];
 
     protected $casts = [
-        'tarif_per_rit' => 'decimal:2',
-        'billed_rit'    => 'integer',
-        'started_at'    => 'date',
-        'ended_at'      => 'date',
+        'tarif_per_rit'       => 'decimal:2',
+        'billed_rit'          => 'integer',
+        'started_at'          => 'date',
+        'ended_at'            => 'date',
+        'include_bbm'         => 'boolean',
+        'include_operator'    => 'boolean',
+        'bbm_liter_per_rit'   => 'decimal:2',
+        'harga_bbm_per_liter' => 'decimal:2',
+        'gaji_supir_per_hari' => 'decimal:2',
+        'uang_makan_per_hari' => 'decimal:2',
+        'uang_jalan_per_rit'  => 'decimal:2',
+        'premi_per_rit'       => 'decimal:2',
     ];
 
     public function client(): BelongsTo

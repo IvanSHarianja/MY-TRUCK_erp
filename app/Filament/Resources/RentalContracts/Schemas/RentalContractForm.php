@@ -9,6 +9,8 @@ use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 
 class RentalContractForm
@@ -75,6 +77,78 @@ class RentalContractForm
                                 'batal'   => 'Batal',
                             ])
                             ->native(false),
+                    ]),
+
+                Section::make('Tipe Rental & Biaya Operasional')
+                    ->description('Tentukan siapa yang menanggung BBM & operator. Untuk All In / Semi, isi standar biaya harian — nanti auto-terpakai di jurnal setiap log jam kerja.')
+                    ->columns(2)
+                    ->schema([
+                        Select::make('tipe_rental')
+                            ->label('Tipe Rental')
+                            ->native(false)
+                            ->required()
+                            ->default('alat_saja')
+                            ->options([
+                                'all_in'    => 'All In (BBM + Operator dari PT)',
+                                'semi'      => 'Semi (Operator dari PT, BBM klien)',
+                                'alat_saja' => 'Alat Saja (Dry Rental)',
+                            ])
+                            ->live()
+                            ->afterStateUpdated(function (?string $state, Set $set) {
+                                // Auto-sync flag turunan supaya service tidak perlu parse string.
+                                $set('include_bbm', $state === 'all_in');
+                                $set('include_operator', in_array($state, ['all_in', 'semi'], true));
+                            })
+                            ->columnSpanFull(),
+                    ]),
+
+                Section::make('Standar Biaya BBM')
+                    ->description('Estimasi konsumsi solar per jam operasi & harga per liter. Kosongkan harga untuk pakai default company.')
+                    ->columns(2)
+                    ->visible(fn (Get $get): bool => (bool) $get('include_bbm'))
+                    ->schema([
+                        TextInput::make('bbm_liter_per_jam')
+                            ->label('Konsumsi BBM (liter/jam)')
+                            ->numeric()
+                            ->step(0.1)
+                            ->minValue(0.1)
+                            ->suffix('L/jam')
+                            ->placeholder('contoh: 12.5')
+                            ->required(fn (Get $get): bool => (bool) $get('include_bbm')),
+
+                        TextInput::make('harga_bbm_per_liter')
+                            ->label('Harga BBM (Rp/liter)')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('Kosongkan → pakai default company')
+                            ->helperText('Isi bila harga solar untuk kontrak ini berbeda dari default company.'),
+                    ]),
+
+                Section::make('Standar Biaya Operator')
+                    ->description('Biaya operator harian & premi. Uang makan & gaji flat per hari kerja.')
+                    ->columns(2)
+                    ->visible(fn (Get $get): bool => (bool) $get('include_operator'))
+                    ->schema([
+                        TextInput::make('gaji_operator_per_hari')
+                            ->label('Gaji Operator per Hari')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('contoh: 250000')
+                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+
+                        TextInput::make('uang_makan_per_hari')
+                            ->label('Uang Makan per Hari')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('contoh: 50000')
+                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+
+                        TextInput::make('premi_per_jam')
+                            ->label('Premi per Jam Kerja (opsional)')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->placeholder('contoh: 15000')
+                            ->helperText('Insentif per jam operasi. Kosongkan bila tidak ada premi.'),
                     ]),
 
                 Section::make('Detail Pekerjaan')

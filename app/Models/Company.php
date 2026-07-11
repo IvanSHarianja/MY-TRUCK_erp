@@ -20,14 +20,16 @@ class Company extends Model implements HasCurrentTenantLabel
         'email',
         'logo',
         'is_active',
+        'harga_solar_default',
     ];
 
     protected function casts(): array
     {
         return [
-            'fiscal_start' => 'date',
-            'fiscal_end'   => 'date',
-            'is_active'    => 'boolean',
+            'fiscal_start'        => 'date',
+            'fiscal_end'          => 'date',
+            'is_active'           => 'boolean',
+            'harga_solar_default' => 'decimal:2',
         ];
     }
 
