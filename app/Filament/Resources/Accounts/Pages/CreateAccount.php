@@ -43,4 +43,9 @@ class CreateAccount extends CreateRecord
 
         parent::fillForm();
     }
+
+    protected function getRedirectUrl(): string
+    {
+        return $this->getResource()::getUrl('index');
+    }
 }

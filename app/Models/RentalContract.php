@@ -100,6 +100,23 @@ class RentalContract extends Model
     public function isAktif(): bool   { return $this->status === 'aktif'; }
     public function isSelesai(): bool { return $this->status === 'selesai'; }
 
+    /**
+     * Derive include_bbm dari tipe_rental (single source of truth).
+     *
+     * Kolom DB `include_bbm` sengaja diabaikan karena UI Filament tidak
+     * selalu persist state Hidden field secara reliable — pakai tipe_rental
+     * eksplisit lebih safe.
+     */
+    public function includesBbm(): bool
+    {
+        return $this->tipe_rental === 'all_in';
+    }
+
+    public function includesOperator(): bool
+    {
+        return in_array($this->tipe_rental, ['all_in', 'semi'], true);
+    }
+
     protected static function booted(): void
     {
         static::deleting(function (RentalContract $contract) {
@@ -118,6 +135,35 @@ class RentalContract extends Model
                 throw new \RuntimeException(
                     "Kontrak {$contract->contract_number} masih punya invoice aktif. Void invoice terkait dulu."
                 );
+            }
+        });
+
+        // Validasi transisi status → 'selesai'.
+        // Kontrak hanya boleh selesai kalau semua jam kerja sudah ditagih
+        // (unbilled_jam = 0). Kalau tidak, revenue recognition tidak konsisten:
+        // ada jam kerja tanpa invoice → piutang tidak tercatat.
+        // Validasi dijalankan di 'saving' supaya tangkap semua path: Filament
+        // form, action button, service, tinker, raw Eloquent update.
+        static::saving(function (RentalContract $contract) {
+            if (! $contract->isDirty('status')) {
+                return;
+            }
+            if ($contract->status !== 'selesai') {
+                return;
+            }
+
+            $totalJam = (float) $contract->rentalLogs()->sum('jam_kerja');
+            $unbilledJam = round(max(0, $totalJam - (float) $contract->billed_jam), 2);
+
+            if ($unbilledJam > 0) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'status' => sprintf(
+                        'Kontrak %s tidak bisa diselesaikan: masih ada %s jam yang belum ditagih (nilai Rp %s). Tagih dulu semua jam kerja sebelum ubah status ke Selesai.',
+                        $contract->contract_number,
+                        number_format($unbilledJam, 2, ',', '.'),
+                        number_format($unbilledJam * (float) $contract->tarif_per_jam, 0, ',', '.'),
+                    ),
+                ]);
             }
         });
     }

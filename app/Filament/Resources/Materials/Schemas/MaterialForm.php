@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Materials\Schemas;
 
+use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
@@ -18,7 +19,14 @@ class MaterialForm
                     ->label('Kode Material')
                     ->required()
                     ->maxLength(20)
-                    ->placeholder('contoh: MAT-001'),
+                    ->placeholder('contoh: MAT-001')
+                    ->unique(ignoreRecord: true, modifyRuleUsing: function ($rule) {
+                        $tenant = Filament::getTenant();
+                        return $rule->where('company_id', $tenant?->getKey());
+                    })
+                    ->validationMessages([
+                        'unique' => 'Kode material ini sudah dipakai. Pilih kode lain.',
+                    ]),
 
                 TextInput::make('name')
                     ->label('Nama Material')

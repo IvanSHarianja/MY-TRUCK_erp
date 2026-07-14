@@ -20,7 +20,14 @@ class AssetForm
                     ->label('Kode Aset')
                     ->required()
                     ->maxLength(20)
-                    ->placeholder('DT-01 / EXCA-01'),
+                    ->placeholder('DT-01 / EXCA-01')
+                    ->unique(ignoreRecord: true, modifyRuleUsing: function ($rule) {
+                        $tenant = Filament::getTenant();
+                        return $rule->where('company_id', $tenant?->getKey());
+                    })
+                    ->validationMessages([
+                        'unique' => 'Kode aset ini sudah dipakai. Pilih kode lain.',
+                    ]),
 
                 TextInput::make('name')
                     ->label('Nama Aset')

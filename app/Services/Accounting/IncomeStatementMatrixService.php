@@ -40,6 +40,10 @@ class IncomeStatementMatrixService
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
+            // Exclude pembalik: jurnal asli sudah void (tidak counted). Include
+            // pembalik akan menyebabkan angka terbalik. Pembalik tetap tersimpan
+            // sebagai audit trail di buku besar.
+            ->where('je.document_type', '!=', 'pembalik')
             ->where('je.period_year', '<=', $year)
             ->when($month !== null, function ($q) use ($year, $month) {
                 $q->where(function ($q2) use ($year, $month) {

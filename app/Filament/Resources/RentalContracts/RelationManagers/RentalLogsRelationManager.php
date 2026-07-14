@@ -151,7 +151,7 @@ class RentalLogsRelationManager extends RelationManager
                             return new HtmlString('<div style="opacity:0.6;">Kontrak tidak ditemukan.</div>');
                         }
 
-                        if (! $contract->include_bbm && ! $contract->include_operator) {
+                        if (! $contract->includesBbm() && ! $contract->includesOperator()) {
                             return new HtmlString('<div style="opacity:0.6;">Kontrak tipe <strong>Alat Saja</strong> — tidak ada biaya operasional dari PT.</div>');
                         }
 
@@ -162,8 +162,8 @@ class RentalLogsRelationManager extends RelationManager
                         $cost = $service->calculateRentalCost([
                             'jam_kerja'              => $get('jam_kerja'),
                             'override_biaya'         => (bool) $get('override_biaya'),
-                            'include_bbm'            => (bool) $contract->include_bbm,
-                            'include_operator'       => (bool) $contract->include_operator,
+                            'include_bbm'            => $contract->includesBbm(),
+                            'include_operator'       => $contract->includesOperator(),
                             'bbm_liter_per_jam'      => $contract->bbm_liter_per_jam,
                             'harga_bbm_per_liter'    => $hargaBbm,
                             'gaji_operator_per_hari' => $contract->gaji_operator_per_hari,
@@ -243,8 +243,11 @@ class RentalLogsRelationManager extends RelationManager
             ->headerActions([
                 CreateAction::make()
                     ->label('Input Jam Kerja')
-                    ->mutateDataUsing(function (array $data): array {
+                    ->mutateDataUsing(function (array $data, RelationManager $livewire): array {
                         $data['created_by'] = auth()->id();
+                        // Inherit asset_id dari parent contract — kolom NOT NULL,
+                        // form tidak minta user pilih (karena kontrak sudah kunci alat).
+                        $data['asset_id'] = $livewire->getOwnerRecord()->asset_id;
                         // Re-calc jam_kerja saat save (sebagai backup)
                         if (isset($data['hm_awal'], $data['hm_akhir'])) {
                             $data['jam_kerja'] = round((float) $data['hm_akhir'] - (float) $data['hm_awal'], 2);

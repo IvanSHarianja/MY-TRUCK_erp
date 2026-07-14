@@ -104,6 +104,29 @@ class ProjectService
             ]);
         }
 
+        // Validasi: DP baru tidak boleh menyebabkan total DP + tertagih > nilai kontrak.
+        // Formula:
+        //   tertagih_nilai   = nilai_kontrak × tertagih_pct / 100
+        //   sisa yang bisa   = nilai_kontrak - tertagih_nilai - dp_diterima (existing)
+        //   amount DP baru   ≤ sisa yang bisa
+        $tertagihNilai = round((float) $project->nilai_kontrak * (float) $project->tertagih_pct / 100, 2);
+        $sisaNilai     = round((float) $project->nilai_kontrak - $tertagihNilai - (float) $project->dp_diterima, 2);
+
+        if (round($amount, 2) > $sisaNilai) {
+            throw ValidationException::withMessages([
+                'amount' => sprintf(
+                    'DP Rp %s melebihi sisa nilai kontrak yang bisa diterima (Rp %s). '
+                    . 'Nilai kontrak Rp %s, sudah tertagih Rp %s (%s%%), DP diterima Rp %s.',
+                    number_format($amount, 0, ',', '.'),
+                    number_format(max(0, $sisaNilai), 0, ',', '.'),
+                    number_format((float) $project->nilai_kontrak, 0, ',', '.'),
+                    number_format($tertagihNilai, 0, ',', '.'),
+                    number_format((float) $project->tertagih_pct, 1, ',', '.'),
+                    number_format((float) $project->dp_diterima, 0, ',', '.'),
+                ),
+            ]);
+        }
+
         $company = Company::findOrFail($project->company_id);
         $dpDate  = $date ? Carbon::parse($date) : Carbon::today();
 
@@ -190,6 +213,8 @@ class ProjectService
      * - termin_pct > 0
      * - tertagih_pct + termin_pct ≤ 100
      * - tertagih_pct + termin_pct ≤ progress_pct (tidak boleh melebihi progress fisik)
+     * - tertagih_nilai + termin_amount + dp_diterima ≤ nilai_kontrak
+     *   (total penerimaan dari klien via DP + tagihan termin tidak boleh melebihi kontrak)
      */
     public function tagihTermin(
         Project $project,
@@ -226,7 +251,31 @@ class ProjectService
             ]);
         }
 
-        $amount  = round((float) $project->nilai_kontrak * $terminPct / 100, 2);
+        $amount = round((float) $project->nilai_kontrak * $terminPct / 100, 2);
+
+        // Validasi vs DP: total penerimaan (DP + tertagih existing + termin baru)
+        // tidak boleh melebihi nilai kontrak. Kalau DP sudah full, tertagih baru
+        // harus 0 — klien sudah bayar semua di depan.
+        $tertagihNilai = round((float) $project->nilai_kontrak * (float) $project->tertagih_pct / 100, 2);
+        $totalPenerimaan = $tertagihNilai + $amount + (float) $project->dp_diterima;
+
+        if (round($totalPenerimaan, 2) > round((float) $project->nilai_kontrak, 2) + 0.01) {
+            $sisaBisaTermin = max(0, (float) $project->nilai_kontrak - $tertagihNilai - (float) $project->dp_diterima);
+            throw ValidationException::withMessages([
+                'termin_pct' => sprintf(
+                    'Total penerimaan (DP Rp %s + tertagih Rp %s + termin baru Rp %s = Rp %s) melebihi nilai kontrak Rp %s. '
+                    . 'Sisa yang bisa ditagih via termin: Rp %s. '
+                    . 'Kalau DP sudah full-payment, tidak perlu tagih termin lagi.',
+                    number_format((float) $project->dp_diterima, 0, ',', '.'),
+                    number_format($tertagihNilai, 0, ',', '.'),
+                    number_format($amount, 0, ',', '.'),
+                    number_format($totalPenerimaan, 0, ',', '.'),
+                    number_format((float) $project->nilai_kontrak, 0, ',', '.'),
+                    number_format($sisaBisaTermin, 0, ',', '.'),
+                ),
+            ]);
+        }
+
         $invDate = $invoiceDate ? Carbon::parse($invoiceDate) : Carbon::today();
         $company = Company::findOrFail($project->company_id);
 

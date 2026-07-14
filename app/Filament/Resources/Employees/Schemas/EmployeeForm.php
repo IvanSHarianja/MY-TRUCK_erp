@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Employees\Schemas;
 
+use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -18,7 +19,14 @@ class EmployeeForm
                     ->label('NIK / ID Karyawan')
                     ->required()
                     ->maxLength(20)
-                    ->placeholder('EMP-001'),
+                    ->placeholder('EMP-001')
+                    ->unique(ignoreRecord: true, modifyRuleUsing: function ($rule) {
+                        $tenant = Filament::getTenant();
+                        return $rule->where('company_id', $tenant?->getKey());
+                    })
+                    ->validationMessages([
+                        'unique' => 'NIK/ID karyawan ini sudah dipakai. Pilih ID lain.',
+                    ]),
 
                 TextInput::make('name')
                     ->label('Nama Lengkap')

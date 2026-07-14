@@ -96,6 +96,20 @@ class ArmadaContract extends Model
     public function isAktif(): bool   { return $this->status === 'aktif'; }
     public function isSelesai(): bool { return $this->status === 'selesai'; }
 
+    /**
+     * Derive include_bbm/operator dari tipe_kontrak — sama pattern dengan
+     * RentalContract. Kolom DB flag diabaikan (safety terhadap UI drift).
+     */
+    public function includesBbm(): bool
+    {
+        return $this->tipe_kontrak === 'all_in';
+    }
+
+    public function includesOperator(): bool
+    {
+        return in_array($this->tipe_kontrak, ['all_in', 'semi'], true);
+    }
+
     protected static function booted(): void
     {
         // Block hapus jika sudah ada invoice atau billed_rit > 0
@@ -116,6 +130,31 @@ class ArmadaContract extends Model
                 throw new \RuntimeException(
                     "Kontrak {$contract->contract_number} masih punya invoice aktif. Void invoice terkait dulu."
                 );
+            }
+        });
+
+        // Validasi transisi status → 'selesai' (sama pola dengan RentalContract).
+        // Kontrak armada hanya boleh selesai kalau semua rit sudah ditagih.
+        static::saving(function (ArmadaContract $contract) {
+            if (! $contract->isDirty('status')) {
+                return;
+            }
+            if ($contract->status !== 'selesai') {
+                return;
+            }
+
+            $totalRit = (int) $contract->ritLogs()->sum('rit_count');
+            $unbilledRit = max(0, $totalRit - (int) $contract->billed_rit);
+
+            if ($unbilledRit > 0) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'status' => sprintf(
+                        'Kontrak %s tidak bisa diselesaikan: masih ada %d rit yang belum ditagih (nilai Rp %s). Tagih dulu semua rit sebelum ubah status ke Selesai.',
+                        $contract->contract_number,
+                        $unbilledRit,
+                        number_format($unbilledRit * (float) $contract->tarif_per_rit, 0, ',', '.'),
+                    ),
+                ]);
             }
         });
     }

@@ -4,11 +4,13 @@ namespace App\Providers;
 
 use App\Models\AssetMaintenanceLog;
 use App\Models\Invoice;
+use App\Models\JournalEntry;
 use App\Models\RentalContract;
 use App\Models\RentalLog;
 use App\Models\RitLog;
 use App\Observers\AssetMaintenanceLogObserver;
 use App\Observers\InvoiceObserver;
+use App\Observers\JournalEntryObserver;
 use App\Observers\RentalContractObserver;
 use App\Observers\RentalLogObserver;
 use App\Observers\RitLogObserver;
@@ -41,5 +43,10 @@ class AppServiceProvider extends ServiceProvider
         // Maintenance: observer hanya handle update & delete karena create dilakukan
         // eksplisit via MaintenanceService::log() (menghindari double-post).
         AssetMaintenanceLog::observe(AssetMaintenanceLogObserver::class);
+
+        // Cascade rollback saat JournalEntry di-void — sinkronkan counter di
+        // source (project.dp_diterima, log.journal_entry_id) yang tidak
+        // otomatis di-handle oleh JournalService::void().
+        JournalEntry::observe(JournalEntryObserver::class);
     }
 }

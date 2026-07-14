@@ -123,7 +123,7 @@ class RitLogsRelationManager extends RelationManager
                             return new HtmlString('<div style="opacity:0.6;">Kontrak tidak ditemukan.</div>');
                         }
 
-                        if (! $contract->include_bbm && ! $contract->include_operator) {
+                        if (! $contract->includesBbm() && ! $contract->includesOperator()) {
                             return new HtmlString('<div style="opacity:0.6;">Kontrak tipe <strong>Alat Saja</strong> — tidak ada biaya operasional dari PT.</div>');
                         }
 
@@ -134,8 +134,8 @@ class RitLogsRelationManager extends RelationManager
                         $cost = $service->calculateRitCost([
                             'rit_count'           => $get('rit_count'),
                             'override_biaya'      => (bool) $get('override_biaya'),
-                            'include_bbm'         => (bool) $contract->include_bbm,
-                            'include_operator'    => (bool) $contract->include_operator,
+                            'include_bbm'         => $contract->includesBbm(),
+                            'include_operator'    => $contract->includesOperator(),
                             'bbm_liter_per_rit'   => $contract->bbm_liter_per_rit,
                             'harga_bbm_per_liter' => $hargaBbm,
                             'gaji_supir_per_hari' => $contract->gaji_supir_per_hari,

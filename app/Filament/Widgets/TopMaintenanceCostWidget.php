@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Widget dashboard "Top Aset Boros Maintenance".
+ * Widget dashboard "Top Aset Maintenance".
  *
  * Menampilkan 5 aset dengan total biaya maintenance tertinggi dalam periode
  * filter dashboard. Membantu controller melihat aset mana yang perlu review
@@ -24,7 +24,7 @@ class TopMaintenanceCostWidget extends TableWidget
 {
     use InteractsWithPageFilters;
 
-    protected static ?string $heading = 'Top Aset Boros Maintenance';
+    protected static ?string $heading = 'Top Aset Maintenance';
 
     protected int|string|array $columnSpan = 'full';
 
@@ -38,10 +38,13 @@ class TopMaintenanceCostWidget extends TableWidget
 
         return $table
             ->query(function () use ($companyId, $startDate, $endDate): Builder {
-                // Subquery agregat maintenance cost per asset dalam periode
+                // Subquery agregat cost per asset. Filter cost > 0 supaya log
+                // service gratis (garansi/inspeksi) tidak dihitung frekuensi —
+                // konsisten dengan sort by total_cost & konteks "boros maintenance".
                 $costSub = DB::table('asset_maintenance_logs')
                     ->select('asset_id', DB::raw('SUM(cost) as total_cost'), DB::raw('COUNT(*) as log_count'))
                     ->when($companyId, fn ($q) => $q->where('company_id', $companyId))
+                    ->where('cost', '>', 0)
                     ->whereBetween('maintenance_date', [$startDate->toDateString(), $endDate->toDateString()])
                     ->groupBy('asset_id');
 

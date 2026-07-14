@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Clients\Schemas;
 
+use Filament\Facades\Filament;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
@@ -17,7 +18,14 @@ class ClientForm
                     ->label('Kode Klien')
                     ->required()
                     ->maxLength(20)
-                    ->placeholder('CLT-001'),
+                    ->placeholder('CLT-001')
+                    ->unique(ignoreRecord: true, modifyRuleUsing: function ($rule) {
+                        $tenant = Filament::getTenant();
+                        return $rule->where('company_id', $tenant?->getKey());
+                    })
+                    ->validationMessages([
+                        'unique' => 'Kode klien ini sudah dipakai. Pilih kode lain.',
+                    ]),
 
                 TextInput::make('name')
                     ->label('Nama Klien')

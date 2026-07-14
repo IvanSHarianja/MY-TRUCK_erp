@@ -140,7 +140,23 @@ class ProjectsTable
                                 ->numeric()
                                 ->prefix('Rp')
                                 ->minValue(1)
-                                ->helperText(fn (Project $r) => 'Nilai kontrak: Rp ' . number_format($r->nilai_kontrak, 0, ',', '.')),
+                                ->maxValue(function (Project $r): float {
+                                    $tertagihNilai = round((float) $r->nilai_kontrak * (float) $r->tertagih_pct / 100, 2);
+                                    $sisa = (float) $r->nilai_kontrak - $tertagihNilai - (float) $r->dp_diterima;
+                                    return max(0, round($sisa, 2));
+                                })
+                                ->helperText(function (Project $r): string {
+                                    $tertagihNilai = round((float) $r->nilai_kontrak * (float) $r->tertagih_pct / 100, 2);
+                                    $sisa = max(0, round((float) $r->nilai_kontrak - $tertagihNilai - (float) $r->dp_diterima, 2));
+                                    return sprintf(
+                                        'Nilai kontrak: Rp %s | Tertagih: Rp %s (%s%%) | DP existing: Rp %s | Sisa yang bisa jadi DP: Rp %s',
+                                        number_format((float) $r->nilai_kontrak, 0, ',', '.'),
+                                        number_format($tertagihNilai, 0, ',', '.'),
+                                        number_format((float) $r->tertagih_pct, 1, ',', '.'),
+                                        number_format((float) $r->dp_diterima, 0, ',', '.'),
+                                        number_format($sisa, 0, ',', '.'),
+                                    );
+                                }),
 
                             Textarea::make('notes')
                                 ->label('Catatan')
@@ -236,10 +252,20 @@ class ProjectsTable
                                 ->minValue(0.01)
                                 ->step(0.01)
                                 ->suffix('%')
-                                ->helperText(fn (Project $r) => sprintf(
-                                    'Progress: %s%% · Tertagih: %s%% · Bisa ditagih maks: %s%%',
-                                    $r->progress_pct, $r->tertagih_pct, $r->sisa_tagih_pct,
-                                )),
+                                ->helperText(function (Project $r): string {
+                                    $tertagihNilai = round((float) $r->nilai_kontrak * (float) $r->tertagih_pct / 100, 2);
+                                    $sisaTermin = max(0, (float) $r->nilai_kontrak - $tertagihNilai - (float) $r->dp_diterima);
+                                    $maxPct = $r->nilai_kontrak > 0 ? round($sisaTermin / $r->nilai_kontrak * 100, 2) : 0;
+
+                                    return sprintf(
+                                        'Progress fisik: %s%% · Tertagih: %s%% · DP: Rp %s · Sisa bisa ditagih: Rp %s (%.2f%%)',
+                                        $r->progress_pct,
+                                        $r->tertagih_pct,
+                                        number_format((float) $r->dp_diterima, 0, ',', '.'),
+                                        number_format($sisaTermin, 0, ',', '.'),
+                                        $maxPct,
+                                    );
+                                }),
 
                             Textarea::make('description')
                                 ->label('Keterangan Termin')

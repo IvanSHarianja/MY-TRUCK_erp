@@ -201,8 +201,8 @@ class OperationalCostService
         return $this->calculateRentalCost([
             'jam_kerja'              => $log->jam_kerja,
             'override_biaya'         => (bool) $log->override_biaya,
-            'include_bbm'            => (bool) $contract->include_bbm,
-            'include_operator'       => (bool) $contract->include_operator,
+            'include_bbm'            => $contract->includesBbm(),
+            'include_operator'       => $contract->includesOperator(),
             'bbm_liter_per_jam'      => $contract->bbm_liter_per_jam,
             'harga_bbm_per_liter'    => $hargaBbm,
             'gaji_operator_per_hari' => $contract->gaji_operator_per_hari,
@@ -230,8 +230,8 @@ class OperationalCostService
         return $this->calculateRitCost([
             'rit_count'           => $log->rit_count,
             'override_biaya'      => (bool) $log->override_biaya,
-            'include_bbm'         => (bool) $contract->include_bbm,
-            'include_operator'    => (bool) $contract->include_operator,
+            'include_bbm'         => $contract->includesBbm(),
+            'include_operator'    => $contract->includesOperator(),
             'bbm_liter_per_rit'   => $contract->bbm_liter_per_rit,
             'harga_bbm_per_liter' => $hargaBbm,
             'gaji_supir_per_hari' => $contract->gaji_supir_per_hari,

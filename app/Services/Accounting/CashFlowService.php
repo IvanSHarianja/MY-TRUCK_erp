@@ -51,6 +51,8 @@ class CashFlowService
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
+            // Pembalik excluded biar tidak double-count void; kalau saldo_awal
+            // di-void, pembalik-nya membalikkan ke posisi netral asli.
             ->where('je.document_type', 'saldo_awal')
             ->whereIn('jl.account_id', $kasAccountIds)
             ->select(DB::raw('COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.kredit), 0) as net'))
@@ -73,6 +75,8 @@ class CashFlowService
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
             ->where('je.document_type', '!=', 'saldo_awal')
+            // Exclude pembalik supaya angka arus kas tidak terbalik dari void.
+            ->where('je.document_type', '!=', 'pembalik')
             ->where('je.period_year', '<=', $year)
             ->when($month !== null, function ($q) use ($year, $month) {
                 $q->where(function ($q2) use ($year, $month) {
