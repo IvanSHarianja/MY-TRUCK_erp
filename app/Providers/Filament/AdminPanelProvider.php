@@ -12,6 +12,7 @@ use App\Filament\Widgets\MonthlyProfitTrendWidget;
 use App\Filament\Widgets\RevenueByBusinessUnitWidget;
 use App\Filament\Widgets\RevenueMixBarWidget;
 use App\Filament\Widgets\TopMaintenanceCostWidget;
+use App\Http\Middleware\EnsureTenantAccess;
 use App\Models\Company;
 use Filament\Enums\ThemeMode;
 use Filament\Support\Enums\Width;
@@ -115,6 +116,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                EnsureTenantAccess::class,
             ]);
     }
 }

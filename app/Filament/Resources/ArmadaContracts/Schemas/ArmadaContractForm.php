@@ -28,8 +28,8 @@ class ArmadaContractForm
 
                         Select::make('client_id')
                             ->label('Pelanggan')
-                            ->relationship('client', 'name', fn ($query) => $query->where('is_active', true))
-                            ->getOptionLabelFromRecordUsing(fn ($record) => "[{$record->code}] {$record->name}")
+                            ->relationship('client', 'name', fn($query) => $query->where('is_active', true))
+                            ->getOptionLabelFromRecordUsing(fn($record) => "[{$record->code}] {$record->name}")
                             ->searchable()
                             ->preload()
                             ->required(),
@@ -44,9 +44,9 @@ class ArmadaContractForm
                             ->default('aktif')
                             ->required()
                             ->options([
-                                'aktif'   => 'Aktif',
+                                'aktif' => 'Aktif',
                                 'selesai' => 'Selesai',
-                                'batal'   => 'Batal',
+                                'batal' => 'Batal',
                             ])
                             ->native(false),
                     ]),
@@ -83,10 +83,10 @@ class ArmadaContractForm
                             ->label('Tipe Kontrak')
                             ->native(false)
                             ->required()
-                            ->default('all_in')
+                            ->default('alat_saja')
                             ->options([
-                                'all_in'    => 'All In (BBM + Supir dari PT)',
-                                'semi'      => 'Semi (Supir dari PT, BBM klien)',
+                                'all_in' => 'All In (BBM + Supir dari PT)',
+                                'semi' => 'Semi (Supir dari PT, BBM klien)',
                                 'alat_saja' => 'Alat Saja (Klien tanggung semua)',
                             ])
                             ->live()
@@ -100,7 +100,7 @@ class ArmadaContractForm
                 Section::make('Standar Biaya BBM (per rit)')
                     ->description('Estimasi konsumsi BBM per rit tergantung jarak rute. Kosongkan harga untuk pakai default company.')
                     ->columns(2)
-                    ->visible(fn (Get $get): bool => (bool) $get('include_bbm'))
+                    ->visible(fn(Get $get): bool => (bool) $get('include_bbm'))
                     ->schema([
                         TextInput::make('bbm_liter_per_rit')
                             ->label('Konsumsi BBM per Rit')
@@ -109,7 +109,7 @@ class ArmadaContractForm
                             ->minValue(0.1)
                             ->suffix('L/rit')
                             ->placeholder('contoh: 15')
-                            ->required(fn (Get $get): bool => (bool) $get('include_bbm')),
+                            ->required(fn(Get $get): bool => (bool) $get('include_bbm')),
 
                         TextInput::make('harga_bbm_per_liter')
                             ->label('Harga BBM (Rp/liter)')
@@ -122,21 +122,21 @@ class ArmadaContractForm
                 Section::make('Standar Biaya Supir')
                     ->description('Gaji & uang makan flat per hari kerja. Uang jalan & premi per rit.')
                     ->columns(2)
-                    ->visible(fn (Get $get): bool => (bool) $get('include_operator'))
+                    ->visible(fn(Get $get): bool => (bool) $get('include_operator'))
                     ->schema([
                         TextInput::make('gaji_supir_per_hari')
                             ->label('Gaji Supir per Hari')
                             ->numeric()
                             ->prefix('Rp')
                             ->placeholder('contoh: 200000')
-                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+                            ->required(fn(Get $get): bool => (bool) $get('include_operator')),
 
                         TextInput::make('uang_makan_per_hari')
                             ->label('Uang Makan per Hari')
                             ->numeric()
                             ->prefix('Rp')
                             ->placeholder('contoh: 50000')
-                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+                            ->required(fn(Get $get): bool => (bool) $get('include_operator')),
 
                         TextInput::make('uang_jalan_per_rit')
                             ->label('Uang Jalan per Rit')
