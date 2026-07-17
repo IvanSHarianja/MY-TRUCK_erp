@@ -168,7 +168,8 @@ class DepreciationService
             \App\Models\JournalEntryLine::create([
                 'journal_entry_id' => $journal->id,
                 'account_id'       => $accBeban->id,
-                'description'      => 'Beban penyusutan ' . $asset->asset_code,
+                'asset_id'         => $asset->id,     // cost tag untuk P&L per unit
+                'description'      => '[' . $asset->asset_code . '] Beban penyusutan bulanan',
                 'debit'            => $monthly,
                 'kredit'           => 0,
                 'sort_order'       => 1,
@@ -177,7 +178,8 @@ class DepreciationService
             \App\Models\JournalEntryLine::create([
                 'journal_entry_id' => $journal->id,
                 'account_id'       => $accAkumulasi->id,
-                'description'      => 'Akumulasi penyusutan ' . $asset->asset_code,
+                'asset_id'         => $asset->id,     // tag juga di akumulasi biar audit trail per aset
+                'description'      => '[' . $asset->asset_code . '] Akumulasi penyusutan',
                 'debit'            => 0,
                 'kredit'           => $monthly,
                 'sort_order'       => 2,

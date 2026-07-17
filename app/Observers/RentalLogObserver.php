@@ -134,23 +134,28 @@ class RentalLogObserver
                 'posted_at'        => now(),
                 'total_amount'     => $cost['total'],
             ],
-            linesFactory: function (JournalEntry $entry) use ($cost, $accBbm, $accGaji, $accPremi, $accKas) {
+            linesFactory: function (JournalEntry $entry) use ($cost, $accBbm, $accGaji, $accPremi, $accKas, $log) {
+                // Tag semua line BEBAN dengan asset_id dari log — untuk P&L per unit.
+                // Sisi kredit (kas) tidak di-tag karena kas bukan cost line.
+                $assetId = $log->asset_id;
+                $prefix = $log->asset ? '[' . $log->asset->asset_code . '] ' : '';
+
                 $lines = [];
 
                 if ($cost['bbm'] > 0 && $accBbm) {
-                    $lines[] = ['account_id' => $accBbm->id, 'description' => 'Beban BBM Solar', 'debit' => $cost['bbm'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accBbm->id, 'asset_id' => $assetId, 'description' => $prefix . 'Beban BBM Solar', 'debit' => $cost['bbm'], 'kredit' => 0];
                 }
                 if ($cost['gaji'] > 0 && $accGaji) {
-                    $lines[] = ['account_id' => $accGaji->id, 'description' => 'Gaji operator', 'debit' => $cost['gaji'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accGaji->id, 'asset_id' => $assetId, 'description' => $prefix . 'Gaji operator', 'debit' => $cost['gaji'], 'kredit' => 0];
                 }
                 if ($cost['makan'] > 0 && $accGaji) {
-                    $lines[] = ['account_id' => $accGaji->id, 'description' => 'Tunjangan makan operator', 'debit' => $cost['makan'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accGaji->id, 'asset_id' => $assetId, 'description' => $prefix . 'Tunjangan makan operator', 'debit' => $cost['makan'], 'kredit' => 0];
                 }
                 if ($cost['premi'] > 0 && $accPremi) {
-                    $lines[] = ['account_id' => $accPremi->id, 'description' => 'Premi operator', 'debit' => $cost['premi'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accPremi->id, 'asset_id' => $assetId, 'description' => $prefix . 'Premi operator', 'debit' => $cost['premi'], 'kredit' => 0];
                 }
 
-                // Sisi kredit (Kas total)
+                // Sisi kredit (Kas total) — tidak di-tag asset_id (kas bukan cost line).
                 $lines[] = ['account_id' => $accKas->id, 'description' => 'Pembayaran biaya operasional rental', 'debit' => 0, 'kredit' => $cost['total']];
 
                 return $lines;

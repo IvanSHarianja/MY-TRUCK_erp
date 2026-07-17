@@ -152,12 +152,14 @@ class MaintenanceService
             linesFactory: fn (JournalEntry $entry) => [
                 [
                     'account_id'  => $accBeban->id,
-                    'description' => $log->description,
+                    'asset_id'    => $asset->id,     // tag untuk P&L per unit
+                    'description' => '[' . $asset->asset_code . '] ' . $log->description,
                     'debit'       => $log->cost,
                     'kredit'      => 0,
                 ],
                 [
                     'account_id'  => $accKas->id,
+                    // asset_id di sisi kas: null (kas tidak related aset spesifik)
                     'description' => 'Pembayaran maintenance ' . optional($asset)->asset_code,
                     'debit'       => 0,
                     'kredit'      => $log->cost,

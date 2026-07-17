@@ -29,6 +29,15 @@ class IncomeStatementMatrix extends Page implements HasForms
 
     protected static ?string $title = 'Laporan Laba Rugi — Segmentasi per Lini Bisnis';
 
+    /**
+     * Hidden dari navigation — sudah dikonsolidasi ke IncomeStatementUnified
+     * (tab "Per Lini Bisnis"). URL lama tetap accessible untuk bookmark.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected function getHeaderActions(): array
     {
         $tenant = Filament::getTenant();

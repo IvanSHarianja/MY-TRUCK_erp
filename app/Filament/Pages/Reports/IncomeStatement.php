@@ -30,6 +30,15 @@ class IncomeStatement extends Page implements HasForms
 
     protected static ?string $title = 'Laporan Laba Rugi (Income Statement)';
 
+    /**
+     * Hidden dari navigation — sudah dikonsolidasi ke IncomeStatementUnified.
+     * URL /admin/{slug}/income-statement tetap accessible untuk backward compat.
+     */
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false;
+    }
+
     protected function getHeaderActions(): array
     {
         $tenant = Filament::getTenant();

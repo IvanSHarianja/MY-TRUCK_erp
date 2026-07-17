@@ -10,6 +10,7 @@ class JournalEntryLine extends Model
     protected $fillable = [
         'journal_entry_id',
         'account_id',
+        'asset_id',
         'description',
         'debit',
         'kredit',
@@ -33,5 +34,15 @@ class JournalEntryLine extends Model
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);
+    }
+
+    /**
+     * Aset yang ter-tag pada line ini — untuk cost tracking per unit.
+     * Nullable: hanya line beban/pendapatan operasional yang related aset
+     * spesifik yang di-tag. Kas, piutang, utang, admin, dll → NULL.
+     */
+    public function asset(): BelongsTo
+    {
+        return $this->belongsTo(Asset::class);
     }
 }

@@ -118,23 +118,27 @@ class RitLogObserver
                 'posted_at'        => now(),
                 'total_amount'     => $cost['total'],
             ],
-            linesFactory: function (JournalEntry $entry) use ($cost, $accBbm, $accGaji, $accPremi, $accKas) {
+            linesFactory: function (JournalEntry $entry) use ($cost, $accBbm, $accGaji, $accPremi, $accKas, $log) {
+                // Tag semua line BEBAN dengan asset_id dari rit_log — untuk P&L per unit.
+                $assetId = $log->asset_id;
+                $prefix = $log->asset ? '[' . $log->asset->asset_code . '] ' : '';
+
                 $lines = [];
 
                 if ($cost['bbm'] > 0 && $accBbm) {
-                    $lines[] = ['account_id' => $accBbm->id, 'description' => 'Beban BBM Solar', 'debit' => $cost['bbm'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accBbm->id, 'asset_id' => $assetId, 'description' => $prefix . 'Beban BBM Solar', 'debit' => $cost['bbm'], 'kredit' => 0];
                 }
                 if ($cost['gaji'] > 0 && $accGaji) {
-                    $lines[] = ['account_id' => $accGaji->id, 'description' => 'Gaji supir', 'debit' => $cost['gaji'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accGaji->id, 'asset_id' => $assetId, 'description' => $prefix . 'Gaji supir', 'debit' => $cost['gaji'], 'kredit' => 0];
                 }
                 if ($cost['makan'] > 0 && $accGaji) {
-                    $lines[] = ['account_id' => $accGaji->id, 'description' => 'Tunjangan makan supir', 'debit' => $cost['makan'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accGaji->id, 'asset_id' => $assetId, 'description' => $prefix . 'Tunjangan makan supir', 'debit' => $cost['makan'], 'kredit' => 0];
                 }
                 if ($cost['uang_jalan'] > 0 && $accPremi) {
-                    $lines[] = ['account_id' => $accPremi->id, 'description' => 'Uang jalan supir', 'debit' => $cost['uang_jalan'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accPremi->id, 'asset_id' => $assetId, 'description' => $prefix . 'Uang jalan supir', 'debit' => $cost['uang_jalan'], 'kredit' => 0];
                 }
                 if ($cost['premi'] > 0 && $accPremi) {
-                    $lines[] = ['account_id' => $accPremi->id, 'description' => 'Premi supir', 'debit' => $cost['premi'], 'kredit' => 0];
+                    $lines[] = ['account_id' => $accPremi->id, 'asset_id' => $assetId, 'description' => $prefix . 'Premi supir', 'debit' => $cost['premi'], 'kredit' => 0];
                 }
 
                 $lines[] = ['account_id' => $accKas->id, 'description' => 'Pembayaran biaya operasional angkutan', 'debit' => 0, 'kredit' => $cost['total']];

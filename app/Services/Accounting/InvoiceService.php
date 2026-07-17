@@ -133,7 +133,15 @@ class InvoiceService
 
         $this->journalService->assertPeriodOpen($company, $invDate->year, $invDate->month);
 
-        return DB::transaction(function () use ($invoice, $revenue, $receivable, $company, $invDate) {
+        // Resolve asset_id dari source untuk tag revenue line — untuk P&L per unit.
+        // Rental contract: 1 kontrak = 1 aset → tag lurus.
+        // Armada contract: 1 invoice bisa cover multi-aset (dari multi rit_logs).
+        //   Untuk MVP, kita tag asset_id kalau semua rit dalam invoice pakai
+        //   1 aset yang sama. Kalau campuran, NULL (revenue tidak ter-tag).
+        //   Multi-line split per aset bisa jadi upgrade nanti.
+        $revenueAssetId = $this->resolveRevenueAssetId($invoice);
+
+        return DB::transaction(function () use ($invoice, $revenue, $receivable, $company, $invDate, $revenueAssetId) {
             $journal = JournalEntry::create([
                 'company_id'       => $invoice->company_id,
                 'entry_number'     => $this->journalService->generateEntryNumber($company, $invDate),
@@ -153,7 +161,7 @@ class InvoiceService
                 'total_amount'     => $invoice->amount,
             ]);
 
-            // Dr Piutang Usaha
+            // Dr Piutang Usaha (tidak di-tag asset — piutang bukan revenue/cost line)
             JournalEntryLine::create([
                 'journal_entry_id' => $journal->id,
                 'account_id'       => $receivable->id,
@@ -163,10 +171,11 @@ class InvoiceService
                 'sort_order'       => 1,
             ]);
 
-            // Cr Pendapatan
+            // Cr Pendapatan — di-tag asset_id kalau resolvable (untuk P&L per unit)
             JournalEntryLine::create([
                 'journal_entry_id' => $journal->id,
                 'account_id'       => $revenue->id,
+                'asset_id'         => $revenueAssetId,
                 'description'      => 'Pendapatan dari invoice ' . $invoice->invoice_number,
                 'debit'            => 0,
                 'kredit'           => $invoice->amount,
@@ -195,6 +204,45 @@ class InvoiceService
 
             return $invoice;
         });
+    }
+
+    /**
+     * Resolve asset_id untuk revenue line — dipakai tag P&L per unit.
+     *
+     * Aturan:
+     *   - source_type='rental_contract' → RentalContract.asset_id (1:1)
+     *   - source_type='armada_contract' → asset_id kalau semua rit_logs
+     *     dalam invoice pakai 1 aset yang sama, kalau campuran → NULL
+     *     (multi-line split per aset bisa jadi upgrade nanti)
+     *   - source_type='material_sale', 'project_termin' → NULL (tidak related aset)
+     *   - Manual invoice tanpa source → NULL
+     */
+    public function resolveRevenueAssetId(Invoice $invoice): ?int
+    {
+        if (! $invoice->source_type || ! $invoice->source_id) {
+            return null;
+        }
+
+        if ($invoice->source_type === 'rental_contract') {
+            $contract = \App\Models\RentalContract::withoutGlobalScopes()->find($invoice->source_id);
+            return $contract?->asset_id;
+        }
+
+        if ($invoice->source_type === 'armada_contract') {
+            // Cari distinct asset_id dari rit_logs yang sudah di-link ke invoice ini.
+            // Kalau hanya 1 asset unique → tag itu. Kalau lebih → NULL (mixed).
+            $assetIds = \App\Models\RitLog::withoutGlobalScopes()
+                ->where('invoice_id', $invoice->id)
+                ->distinct()
+                ->pluck('asset_id')
+                ->filter()
+                ->all();
+
+            return count($assetIds) === 1 ? (int) $assetIds[0] : null;
+        }
+
+        // material_sale, project_termin, atau manual → tidak related aset spesifik
+        return null;
     }
 
     /**

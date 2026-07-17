@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Services\Accounting\BalanceSheetService;
 use App\Services\Accounting\CashFlowService;
 use App\Services\Accounting\EquityStatementService;
+use App\Services\Accounting\IncomeStatementByAssetService;
 use App\Services\Accounting\IncomeStatementMatrixService;
 use App\Services\Accounting\IncomeStatementService;
 use App\Services\Accounting\TrialBalanceService;
@@ -96,6 +97,36 @@ class PdfController extends Controller
         ]))->setPaper('a4', 'landscape');  // landscape karena matrix lebar
 
         return $pdf->stream("Laba-Rugi-per-Lini-{$tenant->slug}-{$year}-" . ($month ?? 'YTD') . ".pdf");
+    }
+
+    /**
+     * Income Statement per Aset PDF — cost tracking per unit.
+     */
+    public function incomeStatementByAsset(Request $request, Company $tenant)
+    {
+        $year  = (int) $request->query('year', now()->year);
+        $month = $request->query('month') ? (int) $request->query('month') : null;
+        $type  = $request->query('type');
+
+        $report = app(IncomeStatementByAssetService::class)->getReport($tenant->id, $year, $month);
+
+        // Filter type kalau ada
+        if ($type) {
+            $report['assets'] = array_values(array_filter(
+                $report['assets'],
+                fn ($row) => $row['type'] === $type,
+            ));
+        }
+
+        $pdf = Pdf::loadView('pdf.reports.income-statement-by-asset', array_merge($report, [
+            'company'     => $tenant,
+            'year'        => $year,
+            'month'       => $month,
+            'typeFilter'  => $type,
+            'periodLabel' => $this->periodLabel($year, $month),
+        ]))->setPaper('a4', 'landscape');  // landscape supaya 8 kolom muat
+
+        return $pdf->stream("Laba-Rugi-per-Unit-{$tenant->slug}-{$year}-" . ($month ?? 'YTD') . ".pdf");
     }
 
     /**

@@ -108,13 +108,18 @@ class ArmadaContractService
                 'created_by'       => Auth::id() ?? $contract->created_by,
             ]);
 
-            // 2. Issue invoice (jurnal otomatis Dr Piutang Cr Pendapatan)
-            $invoice = $this->invoiceService->issue($invoice);
-
-            // 3. Update rit_logs → set invoice_id
+            // 2. Link rit_logs → invoice_id DULU (sebelum issue).
+            //    Alasan: InvoiceService::issue() saat post revenue akan panggil
+            //    resolveRevenueAssetId() yang cari distinct asset_id dari
+            //    rit_logs yang linked ke invoice ini. Kalau link belum ada,
+            //    tag asset akan NULL (tidak masuk P&L per unit).
             $unbilledLogs->each(function ($log) use ($invoice) {
                 $log->update(['invoice_id' => $invoice->id]);
             });
+
+            // 3. Issue invoice (jurnal Dr Piutang Cr Pendapatan; revenue line
+            //    di-tag asset_id kalau semua rit pakai 1 aset yang sama).
+            $invoice = $this->invoiceService->issue($invoice);
 
             // 4. Update kontrak billed_rit
             $contract->update([
