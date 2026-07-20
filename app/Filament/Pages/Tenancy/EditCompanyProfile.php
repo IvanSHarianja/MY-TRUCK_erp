@@ -88,6 +88,25 @@ class EditCompanyProfile extends EditTenantProfile
                         Textarea::make('address')->label('Alamat Lengkap')->rows(3)->columnSpanFull(),
                     ]),
 
+                Section::make('Setting Operasional')
+                    ->description('Nilai default yang dipakai sistem untuk auto-hitung biaya operasional. '
+                        . 'Setiap kontrak Rental/Armada bisa override nilai ini di level kontrak.')
+                    ->columns(2)
+                    ->schema([
+                        TextInput::make('harga_solar_default')
+                            ->label('Harga Solar Default (Rp/liter)')
+                            ->numeric()
+                            ->prefix('Rp')
+                            ->suffix('/ liter')
+                            ->default(6800)
+                            ->required()
+                            ->minValue(1)
+                            ->helperText('Dipakai auto-hitung Beban BBM di RentalLog & RitLog. '
+                                . 'Kalau harga solar naik/turun, update di sini agar semua kontrak '
+                                . 'yang tidak override langsung ikut nilai baru. Log yang sudah terjurnal '
+                                . 'sebelumnya tidak terpengaruh (immutable).'),
+                    ]),
+
                 Section::make('Logo & Branding')
                     ->schema([
                         FileUpload::make('logo')

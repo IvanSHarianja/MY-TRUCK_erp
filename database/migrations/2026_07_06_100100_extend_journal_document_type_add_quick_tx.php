@@ -19,6 +19,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Guard driver: sintaks ENUM/MODIFY COLUMN adalah spesifik MySQL/MariaDB.
+        // SQLite (dipakai testing in-memory) tidak punya tipe ENUM — kolom
+        // sudah dikompilasi sebagai varchar, tidak perlu ALTER apa pun.
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         DB::statement("ALTER TABLE journal_entries MODIFY COLUMN document_type "
             . "ENUM('manual','invoice','bkm','bkk','jual_beli','penyusutan','penyesuaian',"
             . "'penutup','pembalik','saldo_awal','quick_tx') NOT NULL DEFAULT 'manual'");
@@ -26,6 +33,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         // Hapus row dengan document_type='quick_tx' dulu bila ada, agar rollback aman.
         DB::table('journal_entries')->where('document_type', 'quick_tx')->delete();
 
