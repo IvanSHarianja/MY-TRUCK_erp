@@ -23,7 +23,8 @@ class QuickTransactionService
 {
     public function __construct(
         protected JournalService $journalService,
-    ) {}
+    ) {
+    }
 
     /**
      * Post quick transaction → return JournalEntry yang sudah posted.
@@ -60,7 +61,7 @@ class QuickTransactionService
                 'counter_account_id' => 'Akun tidak valid untuk tenant ini.',
             ]);
         }
-        if (! $counterAccount->isPostable()) {
+        if (!$counterAccount->isPostable()) {
             throw ValidationException::withMessages([
                 'counter_account_id' => "Akun [{$counterAccount->code}] {$counterAccount->name} adalah HEADER. Pilih sub-akun spesifik.",
             ]);
@@ -69,7 +70,7 @@ class QuickTransactionService
         // === Allowed-set validation: counterAccount harus match opsi yang valid untuk (type, method) ===
         // Cegah malicious payload (e.g. user kirim akun 1-101 untuk BebanPenyusutan)
         $resolvedMethod = $method ?: $this->inferMethodFromAccount($type, $counterAccount);
-        if (! in_array($resolvedMethod, $type->allowedMethods(), true)) {
+        if (!in_array($resolvedMethod, $type->allowedMethods(), true)) {
             throw ValidationException::withMessages([
                 'method' => "Metode '{$resolvedMethod}' tidak diizinkan untuk transaksi {$type->label()}.",
             ]);
@@ -79,7 +80,7 @@ class QuickTransactionService
             ->pluck('id')
             ->all();
 
-        if (! in_array($counterAccount->id, $allowedAccountIds, true)) {
+        if (!in_array($counterAccount->id, $allowedAccountIds, true)) {
             throw ValidationException::withMessages([
                 'counter_account_id' => "Akun [{$counterAccount->code}] {$counterAccount->name} tidak valid sebagai akun lawan untuk transaksi {$type->label()}. "
                     . 'Pilih dari daftar yang tersedia.',
@@ -93,7 +94,7 @@ class QuickTransactionService
                 ->where('company_id', $company->id)
                 ->find($businessUnitId);
 
-            if (! $businessUnit) {
+            if (!$businessUnit) {
                 throw ValidationException::withMessages([
                     'business_unit_id' => 'Lini bisnis tidak valid untuk tenant ini.',
                 ]);
@@ -115,19 +116,58 @@ class QuickTransactionService
             ]);
         }
 
-        // === Resolve fixed account dari enum ===
+        // === Guard: counterAccount TIDAK BOLEH sama dengan fixedAccount ===
+        //
+        // Kenapa: jurnal Dr X / Cr X (akun sama di kedua sisi) balanced secara
+        // matematika tapi net effect = 0. Tidak ada perubahan saldo di GL.
+        // User yang salah pilih (mis. dropdown "Akun Kas / Bank" pilih akun
+        // modal) → jurnal terpost tapi tidak berpengaruh apa-apa.
+        //
+        // Fixed account di-resolve di bawah, tapi kita cek pre-emptively:
+        // kalau fixedRole == role counter, artinya user memilih akun dengan
+        // role yang sama dengan role fixed → potensial conflict.
+
+        // === Resolve fixed account: role first, fallback code (Sprint 2.5) ===
+        // Tenant pakai kode custom → set role di master COA, sistem otomatis pakai
+        // akun tsb. Tenant pakai kode standar → tetap jalan via fallback code.
+        $fixedRole = $type->fixedRole();
         $fixedCode = $type->fixedAccountCode();
-        $fixedAccount = Account::findPostableByCode($fixedCode, $company->id);
-        if (! $fixedAccount) {
+        $fixedAccount = Account::findByRoleOrCode($fixedRole, $fixedCode, $company->id);
+
+        if (!$fixedAccount) {
             throw ValidationException::withMessages([
-                'type' => "Akun [{$fixedCode}] yang dibutuhkan untuk {$type->label()} tidak ditemukan / tidak postable. "
-                    . 'Pastikan COA sudah ter-sync atau tambah sub-akun bila sudah jadi HEADER.',
+                'type' => sprintf(
+                    'Akun untuk %s tidak ditemukan. Sistem mencari akun dengan role "%s" (%s) '
+                    . 'ATAU akun dengan kode "%s". Buka menu Daftar Akun (COA), tambah akun baru '
+                    . 'atau set role di akun existing.',
+                    $type->label(),
+                    $fixedRole->value,
+                    $fixedRole->label(),
+                    $fixedCode,
+                ),
+            ]);
+        }
+
+        // === Guard: counterAccount tidak boleh sama dengan fixedAccount ===
+        // Jurnal Dr X / Cr X (akun sama di kedua sisi) balanced tapi net = 0.
+        // Ini gejala user salah pilih di dropdown counter (mis. pilih akun modal
+        // untuk field "Akun Kas / Bank"). Reject dengan pesan jelas.
+        if ($counterAccount->id === $fixedAccount->id) {
+            throw ValidationException::withMessages([
+                'counter_account_id' => sprintf(
+                    'Akun lawan (%s) tidak boleh sama dengan akun sistem (%s) untuk %s. '
+                    . 'Pilih akun kas/bank yang berbeda — biasanya akun dengan role "Kas & Bank Utama". '
+                    . 'Kalau kedua sisi ke akun yang sama, jurnal tidak akan berdampak apa-apa.',
+                    "[{$counterAccount->code}] {$counterAccount->name}",
+                    "[{$fixedAccount->code}] {$fixedAccount->name}",
+                    $type->label(),
+                ),
             ]);
         }
 
         // === Build Dr/Cr berdasarkan fixedSide ===
         [$drAccountId, $crAccountId] = match ($type->fixedSide()) {
-            'debit'  => [$fixedAccount->id, $counterAccount->id],
+            'debit' => [$fixedAccount->id, $counterAccount->id],
             'kredit' => [$counterAccount->id, $fixedAccount->id],
         };
 
@@ -138,36 +178,36 @@ class QuickTransactionService
         // Race-safe: createEntryWithLines retry pada unique constraint violation
         // bila entry_number bentrok dengan request concurrent.
         return $this->journalService->createEntryWithLines(
-            company:           $company,
-            date:              $txDate,
-            entryDataFactory:  fn (string $entryNumber): array => [
-                'company_id'       => $company->id,
-                'entry_number'     => $entryNumber,
-                'entry_date'       => $txDate,
-                'document_number'  => $this->generateDocumentNumber($company, $type, $txDate),
-                'document_type'    => 'quick_tx',
+            company: $company,
+            date: $txDate,
+            entryDataFactory: fn(string $entryNumber): array => [
+                'company_id' => $company->id,
+                'entry_number' => $entryNumber,
+                'entry_date' => $txDate,
+                'document_number' => $this->generateDocumentNumber($company, $type, $txDate),
+                'document_type' => 'quick_tx',
                 'business_unit_id' => optional($businessUnit)->id,
-                'description'      => $desc,
-                'period_year'      => $txDate->year,
-                'period_month'     => $txDate->month,
-                'status'           => 'posted',
-                'created_by'       => Auth::id(),
-                'posted_by'        => Auth::id(),
-                'posted_at'        => now(),
-                'total_amount'     => $amount,
+                'description' => $desc,
+                'period_year' => $txDate->year,
+                'period_month' => $txDate->month,
+                'status' => 'posted',
+                'created_by' => Auth::id(),
+                'posted_by' => Auth::id(),
+                'posted_at' => now(),
+                'total_amount' => $amount,
             ],
-            linesFactory:      fn (JournalEntry $entry): array => [
+            linesFactory: fn(JournalEntry $entry): array => [
                 [
-                    'account_id'  => $drAccountId,
+                    'account_id' => $drAccountId,
                     'description' => $desc,
-                    'debit'       => $amount,
-                    'kredit'      => 0,
+                    'debit' => $amount,
+                    'kredit' => 0,
                 ],
                 [
-                    'account_id'  => $crAccountId,
+                    'account_id' => $crAccountId,
                     'description' => $desc,
-                    'debit'       => 0,
-                    'kredit'      => $amount,
+                    'debit' => 0,
+                    'kredit' => $amount,
                 ],
             ],
         );
@@ -221,9 +261,6 @@ class QuickTransactionService
 
         return match ($method) {
             'kas', 'bank' => $query
-                ->where('category', 'aset')
-                ->where('sub_category', 'aset_lancar')
-                ->where('cash_flow_category', 'operasi')
                 ->orderBy('code')
                 ->get(),
 
@@ -244,8 +281,10 @@ class QuickTransactionService
      */
     protected function inferMethodFromAccount(QuickTransactionType $type, Account $counter): string
     {
-        if ($type->isPenyusutan()) return 'nonkas';
-        if ($counter->category === 'kewajiban') return 'utang';
+        if ($type->isPenyusutan())
+            return 'nonkas';
+        if ($counter->category === 'kewajiban')
+            return 'utang';
         return 'kas'; // default — toh 'kas' dan 'bank' sama-sama mengambil aset lancar operasi
     }
 }

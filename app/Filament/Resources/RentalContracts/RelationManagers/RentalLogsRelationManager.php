@@ -72,6 +72,13 @@ class RentalLogsRelationManager extends RelationManager
                     ->step(0.1)
                     ->placeholder('contoh: 4872.0')
                     ->live(onBlur: true)
+                    // BUG-07: hard validation — HM akhir HARUS > HM awal.
+                    // Sebelumnya cuma warning visual (Placeholder), sementara data
+                    // tetap tersimpan → jam_kerja negatif. Sekarang form gagal submit.
+                    ->rules(['gt:hm_awal'])
+                    ->validationMessages([
+                        'gt' => 'HM akhir harus lebih besar dari HM awal.',
+                    ])
                     ->afterStateUpdated(function ($state, Get $get, Set $set) {
                         $awal = (float) ($get('hm_awal') ?? 0);
                         $akhir = (float) ($state ?? 0);
@@ -250,7 +257,16 @@ class RentalLogsRelationManager extends RelationManager
                         $data['asset_id'] = $livewire->getOwnerRecord()->asset_id;
                         // Re-calc jam_kerja saat save (sebagai backup)
                         if (isset($data['hm_awal'], $data['hm_akhir'])) {
-                            $data['jam_kerja'] = round((float) $data['hm_akhir'] - (float) $data['hm_awal'], 2);
+                            // BUG-07: guard kedua di server-side. Kalau client-side rule
+                            // di-bypass (mis. API direct atau JS di-nonaktifkan), ini
+                            // masih menahan jam_kerja negatif masuk DB.
+                            $jamKerja = round((float) $data['hm_akhir'] - (float) $data['hm_awal'], 2);
+                            if ($jamKerja <= 0) {
+                                throw \Illuminate\Validation\ValidationException::withMessages([
+                                    'hm_akhir' => 'HM akhir harus lebih besar dari HM awal. Jam kerja tidak boleh nol atau negatif.',
+                                ]);
+                            }
+                            $data['jam_kerja'] = $jamKerja;
                         }
                         return $data;
                     }),
@@ -260,7 +276,16 @@ class RentalLogsRelationManager extends RelationManager
                     ->visible(fn ($record): bool => $record->invoice_id === null)
                     ->mutateDataUsing(function (array $data): array {
                         if (isset($data['hm_awal'], $data['hm_akhir'])) {
-                            $data['jam_kerja'] = round((float) $data['hm_akhir'] - (float) $data['hm_awal'], 2);
+                            // BUG-07: guard kedua di server-side. Kalau client-side rule
+                            // di-bypass (mis. API direct atau JS di-nonaktifkan), ini
+                            // masih menahan jam_kerja negatif masuk DB.
+                            $jamKerja = round((float) $data['hm_akhir'] - (float) $data['hm_awal'], 2);
+                            if ($jamKerja <= 0) {
+                                throw \Illuminate\Validation\ValidationException::withMessages([
+                                    'hm_akhir' => 'HM akhir harus lebih besar dari HM awal. Jam kerja tidak boleh nol atau negatif.',
+                                ]);
+                            }
+                            $data['jam_kerja'] = $jamKerja;
                         }
                         return $data;
                     }),

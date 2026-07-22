@@ -101,7 +101,15 @@ class JournalEntryObserver
     /**
      * Void jurnal invoice → sinkronkan status invoice ke 'void'.
      *
-     * Kita update via Eloquent (bukan raw DB) supaya InvoiceObserver.updated
+     * BUG-03 GUARD:
+     *   Kalau invoice punya payment records, void jurnal DITOLAK (throw).
+     *   Alasan: kalau invoice void tapi payment tetap ada, kas naik dari
+     *   pembayaran ke piutang yang secara akuntansi sudah dibatalkan —
+     *   situasi self-inconsistent yang butuh cleanup manual accountant.
+     *   Solusi ke user: reverse payment dulu via PaymentService::reverse
+     *   (yang balance-safe), baru void jurnal invoice.
+     *
+     * Update dilakukan via Eloquent (bukan raw DB) supaya InvoiceObserver.updated
      * ter-trigger dan cascade ke source_type (project_termin → decrement
      * tertagih_pct, rental_contract → decrement billed_jam, dll).
      *
@@ -122,11 +130,18 @@ class JournalEntryObserver
             return;
         }
 
-        // Kalau invoice sudah ada payment, kita tetap void — tapi paid_amount
-        // tidak di-touch (payment records tetap ada). Ini menghasilkan data
-        // yang secara akuntansi self-consistent: buku besar sudah dibalik,
-        // invoice void, tapi payment record tetap sebagai bukti transaksi kas.
-        // Kalau user ingin bersihkan payment, reverse manual via PaymentService.
+        // BUG-03: block cascade kalau ada payment aktif. Throw akan
+        // rollback DB::transaction di observer → journal tidak jadi void.
+        $paymentCount = $invoice->payments()->count();
+        if ($paymentCount > 0) {
+            throw new \RuntimeException(sprintf(
+                'Tidak bisa void jurnal invoice %s: invoice ini masih memiliki %d payment aktif. '
+                . 'Reverse semua payment terlebih dahulu (via halaman Payments) sebelum void jurnal invoice-nya.',
+                $invoice->invoice_number,
+                $paymentCount,
+            ));
+        }
+
         $invoice->update([
             'status'      => 'void',
             'voided_at'   => now(),

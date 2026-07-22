@@ -21,6 +21,7 @@ class Account extends Model
         'sub_category',
         'normal_balance',
         'cash_flow_category',
+        'role',
         'tax_type',
         'is_active',
         'notes',
@@ -30,11 +31,126 @@ class Account extends Model
     {
         return [
             'is_active' => 'boolean',
+            'role'      => \App\Enums\AccountRole::class,
         ];
+    }
+
+    /**
+     * Ambil semua akun POSTABLE untuk company dengan role tertentu.
+     * Dipakai di service layer sebagai pengganti hardcoded code lookup.
+     */
+    public static function byRole(\App\Enums\AccountRole|string $role, int $companyId): \Illuminate\Database\Eloquent\Collection
+    {
+        $roleValue = $role instanceof \App\Enums\AccountRole ? $role->value : $role;
+
+        return static::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->where('role', $roleValue)
+            ->where('is_active', true)
+            ->postable()
+            ->orderBy('code')
+            ->get();
+    }
+
+    /**
+     * Ambil akun postable pertama untuk role tertentu.
+     * Return null kalau tidak ada — caller wajib defensive handle.
+     */
+    public static function firstByRole(\App\Enums\AccountRole|string $role, int $companyId): ?self
+    {
+        return static::byRole($role, $companyId)->first();
+    }
+
+    /**
+     * Cari akun POSTABLE dengan prioritas: role first, fallback ke code.
+     *
+     * Dipakai service refactor Sprint 2.5 untuk transisi smooth:
+     *  - Data baru & template standar: role sudah di-set → return by role.
+     *  - Data lama (belum di-migrate) yang pakai code standar → fallback ke code.
+     *  - Akun custom tanpa role & bukan code standar → NULL (caller error jelas).
+     *
+     * Setelah semua tenant produksi selesai backfill role, fallback bisa
+     * di-remove di rilis berikutnya.
+     */
+    public static function findByRoleOrCode(
+        \App\Enums\AccountRole|string $role,
+        string $fallbackCode,
+        int $companyId,
+    ): ?self {
+        $byRole = static::firstByRole($role, $companyId);
+
+        if ($byRole) {
+            return $byRole;
+        }
+
+        // Fallback code lookup (backward compat, untuk data legacy).
+        return static::findPostableByCode($fallbackCode, $companyId);
+    }
+
+    /**
+     * Descendant IDs berbasis role — pengganti descendantIds(code) di
+     * service CashFlow yang perlu semua sub-akun kas/bank.
+     *
+     * Return array ID semua akun yang punya role tertentu (postable),
+     * termasuk semua descendant kalau ada.
+     *
+     * @return array<int>
+     */
+    public static function idsByRole(\App\Enums\AccountRole|string $role, int $companyId): array
+    {
+        return static::byRole($role, $companyId)->pluck('id')->all();
     }
 
     protected static function booted(): void
     {
+        // === Auto-fill sub_category & cash_flow_category (Sprint 2.5+) ===
+        //
+        // Kenapa: user sering lupa isi sub_category / cash_flow_category saat
+        // bikin akun custom. Filter Neraca (sub_category) dan Arus Kas
+        // (cash_flow_category) jadi tidak lolos → laporan salah diam-diam.
+        //
+        // Solusi: auto-derive dari role (priority 1) atau category (priority 2).
+        // Explicit user set tetap dihormati (cuma fill kalau kosong).
+        static::saving(function (Account $account) {
+            // Priority 1: role di-set → derive persis
+            if ($account->role) {
+                $role = $account->role instanceof \App\Enums\AccountRole
+                    ? $account->role
+                    : \App\Enums\AccountRole::tryFrom((string) $account->role);
+
+                if ($role) {
+                    if (empty($account->sub_category)) {
+                        $account->sub_category = $role->defaultSubCategory();
+                    }
+                    if (empty($account->cash_flow_category)) {
+                        $account->cash_flow_category = $role->defaultCashFlow();
+                    }
+                }
+            }
+
+            // Priority 2: role kosong tapi category ada → default per category
+            if (empty($account->sub_category) && $account->category) {
+                $account->sub_category = match ($account->category) {
+                    'aset'       => 'aset_lancar',        // asumsi konservatif — mayoritas aset UMKM lancar
+                    'kewajiban'  => 'kewajiban_lancar',   // mayoritas utang jangka pendek
+                    'ekuitas'    => 'ekuitas',
+                    'pendapatan' => 'pendapatan_usaha',   // pendapatan utama
+                    'beban'      => 'beban_operasional',  // beban tidak spesifik → operasional
+                    'penutup'    => 'penutup',
+                    default      => null,
+                };
+            }
+
+            if (empty($account->cash_flow_category) && $account->category) {
+                $account->cash_flow_category = match ($account->category) {
+                    'aset', 'kewajiban', 'pendapatan', 'beban' => 'operasi',
+                    'ekuitas'                                    => 'pendanaan',
+                    'penutup'                                    => 'non_kas',
+                    default                                       => null,
+                };
+            }
+        });
+
         // === Validasi saat save: cek self-reference & cyclic reference ===
         static::saving(function (Account $account) {
             if (! $account->parent_code) return;

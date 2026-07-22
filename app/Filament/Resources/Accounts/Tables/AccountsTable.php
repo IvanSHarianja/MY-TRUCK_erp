@@ -92,6 +92,16 @@ class AccountsTable
                     ->badge()
                     ->toggleable(),
 
+                TextColumn::make('role')
+                    ->label('Peran (Role)')
+                    ->badge()
+                    ->color('primary')
+                    ->formatStateUsing(fn ($state) =>
+                        $state instanceof \App\Enums\AccountRole ? $state->label() : ($state ?? '—')
+                    )
+                    ->tooltip('Peran fungsional akun. Wajib untuk akun yang dipakai laporan otomatis (kas, modal, piutang, dll).')
+                    ->toggleable(),
+
                 TextColumn::make('tax_type')
                     ->label('Pajak')
                     ->toggleable(isToggledHiddenByDefault: true),

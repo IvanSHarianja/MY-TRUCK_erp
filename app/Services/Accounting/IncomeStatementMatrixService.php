@@ -44,16 +44,9 @@ class IncomeStatementMatrixService
             // pembalik akan menyebabkan angka terbalik. Pembalik tetap tersimpan
             // sebagai audit trail di buku besar.
             ->where('je.document_type', '!=', 'pembalik')
-            ->where('je.period_year', '<=', $year)
-            ->when($month !== null, function ($q) use ($year, $month) {
-                $q->where(function ($q2) use ($year, $month) {
-                    $q2->where('je.period_year', '<', $year)
-                       ->orWhere(function ($q3) use ($year, $month) {
-                           $q3->where('je.period_year', $year)
-                              ->where('je.period_month', '<=', $month);
-                       });
-                });
-            })
+            // BUG-16: L/R hanya periode berjalan, bukan kumulatif sejak inception
+            ->where('je.period_year', $year)
+            ->when($month !== null, fn ($q) => $q->where('je.period_month', '<=', $month))
             ->whereIn('a.category', ['pendapatan', 'beban'])
             ->select(
                 'a.id as account_id',

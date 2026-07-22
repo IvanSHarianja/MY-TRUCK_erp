@@ -38,21 +38,35 @@ class TrialBalanceService
         ?int $month = null,
         ?int $businessUnitId = null,
         bool $includeZero = false,
+        string $scopeMode = 'cumulative',
     ): Collection {
+        // BUG-16: parameter $scopeMode kontrol filter periode.
+        //   'cumulative' (default) — semua transaksi <= $year (untuk Neraca/BS,
+        //                            karena saldo aset/kewajiban/ekuitas akumulatif).
+        //   'period'                — hanya transaksi di $year saja (untuk L/R,
+        //                            supaya revenue tahun sebelumnya tidak dobel-counted).
         // Subquery: aggregate per account_id dari journal lines yang memenuhi filter
         $agg = DB::table('journal_entry_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
-            ->where('je.period_year', '<=', $year)
-            ->when($month !== null, function ($q) use ($year, $month) {
-                $q->where(function ($q2) use ($year, $month) {
-                    $q2->where('je.period_year', '<', $year)
-                       ->orWhere(function ($q3) use ($year, $month) {
-                           $q3->where('je.period_year', $year)
-                              ->where('je.period_month', '<=', $month);
-                       });
-                });
+            ->when($scopeMode === 'cumulative', function ($q) use ($year, $month) {
+                // Neraca / TB: kumulatif sejak inception s/d $year (dan optionally $month)
+                $q->where('je.period_year', '<=', $year)
+                    ->when($month !== null, function ($q2) use ($year, $month) {
+                        $q2->where(function ($q3) use ($year, $month) {
+                            $q3->where('je.period_year', '<', $year)
+                               ->orWhere(function ($q4) use ($year, $month) {
+                                   $q4->where('je.period_year', $year)
+                                      ->where('je.period_month', '<=', $month);
+                               });
+                        });
+                    });
+            }, function ($q) use ($year, $month) {
+                // L/R (period mode): HANYA tahun berjalan. Kalau month diisi,
+                // batasi lebih ketat ke bulan Jan s/d $month tahun $year.
+                $q->where('je.period_year', $year)
+                    ->when($month !== null, fn ($q2) => $q2->where('je.period_month', '<=', $month));
             })
             ->when($businessUnitId !== null, fn ($q) => $q->where('je.business_unit_id', $businessUnitId))
             ->groupBy('jl.account_id')

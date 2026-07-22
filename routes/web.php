@@ -13,15 +13,20 @@ use Illuminate\Support\Facades\Route;
 Route::get('/', fn () => redirect('/admin'));
 
 /**
- * PDF Export Routes (auth required)
- * Format: /pdf/{tenant_slug}/{module}/{id?}
+ * PDF Export Routes (auth + tenant access required).
+ *
+ * BUG-01 & BUG-02 fix: middleware `pdf.tenant` (EnsurePdfTenantAccess) mencegah
+ * user Company A akses invoice/laporan keuangan Company B via URL guessing.
+ * Sebelumnya cuma middleware `auth` — cukup login jadi user manapun.
+ *
+ * Format: /pdf/invoice/{invoice} atau /pdf/{tenant_slug}/{module}
  */
-Route::middleware(['web', 'auth'])->prefix('pdf')->name('pdf.')->group(function () {
-    // Invoice
+Route::middleware(['web', 'auth', 'pdf.tenant'])->prefix('pdf')->name('pdf.')->group(function () {
+    // Invoice (guard via invoice->company)
     Route::get('/invoice/{invoice}', [PdfController::class, 'invoice'])
         ->name('invoice');
 
-    // Laporan Keuangan per tenant
+    // Laporan Keuangan per tenant (guard via {tenant:slug})
     Route::prefix('{tenant:slug}')->group(function () {
         Route::get('/trial-balance', [PdfController::class, 'trialBalance'])->name('trial-balance');
         Route::get('/income-statement', [PdfController::class, 'incomeStatement'])->name('income-statement');

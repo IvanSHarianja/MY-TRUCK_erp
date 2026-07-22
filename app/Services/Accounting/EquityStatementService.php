@@ -27,9 +27,15 @@ class EquityStatementService
      */
     public function getReport(int $companyId, int $year, ?int $month = null): array
     {
-        $modalPemilik  = $this->trialBalance->getAccountBalance($companyId, '331100', $year, $month);
-        $labaDitahan   = $this->trialBalance->getAccountBalance($companyId, '331300', $year, $month);
-        $priveRaw      = $this->trialBalance->getAccountBalance($companyId, '331200', $year, $month);
+        // Sprint 2.5: role-based lookup. Kalau user pakai kode custom untuk
+        // Modal/Prive/Laba Ditahan, tetap muncul di laporan asal role di-set benar.
+        $modalCode        = $this->resolveCodeByRole($companyId, \App\Enums\AccountRole::EquityModal, '331100');
+        $priveCode        = $this->resolveCodeByRole($companyId, \App\Enums\AccountRole::EquityPrive, '331200');
+        $labaDitahanCode  = $this->resolveCodeByRole($companyId, \App\Enums\AccountRole::EquityLabaDitahan, '331300');
+
+        $modalPemilik  = $this->trialBalance->getAccountBalance($companyId, $modalCode, $year, $month);
+        $labaDitahan   = $this->trialBalance->getAccountBalance($companyId, $labaDitahanCode, $year, $month);
+        $priveRaw      = $this->trialBalance->getAccountBalance($companyId, $priveCode, $year, $month);
         $labaBerjalan  = $this->incomeStatement->getNetProfit($companyId, $year, $month);
 
         // Saldo akun 331200 (Prive) normal_balance = debit, jadi saldo positif berarti pengambilan.
@@ -41,5 +47,16 @@ class EquityStatementService
         return compact(
             'modalPemilik', 'labaDitahan', 'labaBerjalan', 'prive', 'totalEkuitas',
         );
+    }
+
+    /**
+     * Resolve code akun berdasar role, dengan fallback ke code standar.
+     * Kalau tenant pakai code custom (e.g. 3000000-01), role akan mengarah ke
+     * akun itu; kalau role belum di-set, pakai code standar (backward compat).
+     */
+    private function resolveCodeByRole(int $companyId, \App\Enums\AccountRole $role, string $fallbackCode): string
+    {
+        $account = \App\Models\Account::firstByRole($role, $companyId);
+        return $account?->code ?? $fallbackCode;
     }
 }

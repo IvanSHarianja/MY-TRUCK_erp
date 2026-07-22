@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\AccountRole;
 use App\Models\Account;
 use App\Models\BusinessUnit;
 use App\Models\Company;
@@ -10,6 +11,35 @@ use Illuminate\Support\Facades\DB;
 
 class CompanyTemplateService
 {
+    public function generateForCompany(Company $company, bool $isEmptyData = false)
+    {
+        if ($isEmptyData) {
+            // JIKA USER MEMILIH DATA KOSONG:
+            // Jangan masukkan akun sembarangan, TAPI kita tetap wajib 
+            // membuatkan minimal akun penampung untuk mapping sistem (jika diperlukan)
+            // ATAU biarkan kosong total, dan arahkan user untuk mengisi mapping secara manual.
+            return;
+        }
+
+        // --- KODE LAMA ANDA UNTUK DATA DEFAULT / DEMO ---
+        // Di sinilah biasanya akun-akun seperti '331100' di-generate secara otomatis
+        $accountModal = Account::create([
+            'company_id' => $company->id,
+            'code' => '331100',
+            'name' => 'Setoran Modal Pemilik',
+            // ... atribut lainnya
+        ]);
+
+        // BONUS KEUNTUNGAN AKUN MAPPING:
+        // Karena kita menggunakan Account Mapping, kita bisa langsung 
+        // daftarkan akun default ini ke tabel mapping secara otomatis di sini!
+        AccountMapping::create([
+            'company_id' => $company->id,
+            'transaction_type' => 'setoran_modal', // Sesuaikan dengan key transaksi Anda
+            'account_id' => $accountModal->id,
+        ]);
+    }
+    
     public function seedDefaults(Company $company): void
     {
         DB::transaction(function () use ($company) {
@@ -21,7 +51,13 @@ class CompanyTemplateService
 
     public function seedAccounts(Company $company): void
     {
+        // Auto-mapping code → role dari AccountRole::standardCodeMapping().
+        // Setiap akun standar dapat role otomatis; user tidak perlu isi manual.
+        $roleMapping = AccountRole::standardCodeMapping();
+
         foreach ($this->accounts() as $row) {
+            $row['role'] = $roleMapping[$row['code']] ?? null;
+
             Account::updateOrCreate(
                 ['company_id' => $company->id, 'code' => $row['code']],
                 $row + ['company_id' => $company->id, 'is_active' => true],

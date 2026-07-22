@@ -34,10 +34,15 @@ class CashFlowService
      */
     public function getReport(int $companyId, int $year, ?int $month = null): array
     {
-        // Include 111100 (Kas & Bank), 111110 (Kas Kecil), DAN semua sub-akun (descendants).
-        // Setelah F11, user bisa split 111100 jadi 111100-01 BCA, 111100-02 Mandiri, dll.
-        // CashFlow harus include semua ID descendant agar saldo tetap akurat.
+        // Sprint 2.5: role-based lookup — dulu hardcoded ke code 111100/111110.
+        // Sekarang cari semua akun dengan role 'cash' atau 'cash_petty' di company ini.
+        // User bebas pakai kode akun apapun (contoh 1000000-01 Bank BCA) asal role di-set benar.
+        //
+        // Backward compat: kalau role belum di-set, tetap fallback ke code standar.
         $kasAccountIds = array_unique(array_merge(
+            Account::idsByRole(\App\Enums\AccountRole::Cash, $companyId),
+            Account::idsByRole(\App\Enums\AccountRole::CashPetty, $companyId),
+            // Fallback untuk data legacy: descendants dari kode standar
             Account::descendantIds('111100', $companyId, includeSelf: true),
             Account::descendantIds('111110', $companyId, includeSelf: true),
         ));

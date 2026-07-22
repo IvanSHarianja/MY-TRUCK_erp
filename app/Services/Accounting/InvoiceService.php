@@ -69,9 +69,18 @@ class InvoiceService
             if ($acc && $acc->isPostable()) return $acc;
         }
 
+        // Sprint 2.5: role-based mapping BU → role revenue. Fallback ke code klasik.
+        $role = match (optional($invoice->businessUnit)->code) {
+            'RENT'  => \App\Enums\AccountRole::RevenueRent,
+            'ARMD'  => \App\Enums\AccountRole::RevenueArmd,
+            'MATL'  => \App\Enums\AccountRole::RevenueMatl,
+            'BONG'  => \App\Enums\AccountRole::RevenueBong,
+            default => \App\Enums\AccountRole::RevenueLain,
+        };
+
         $code = $this->defaultRevenueAccountCode($invoice->businessUnit);
 
-        $acc = Account::findPostableByCode($code, $invoice->company_id);
+        $acc = Account::findByRoleOrCode($role, $code, $invoice->company_id);
 
         if (! $acc) {
             throw ValidationException::withMessages([
@@ -94,12 +103,17 @@ class InvoiceService
             if ($acc && $acc->isPostable()) return $acc;
         }
 
-        $acc = Account::findPostableByCode('111200', $invoice->company_id);
+        // Sprint 2.5: role-based (role='receivable_usaha'). Fallback ke code 111200.
+        $acc = Account::findByRoleOrCode(
+            \App\Enums\AccountRole::ReceivableUsaha,
+            '111200',
+            $invoice->company_id,
+        );
 
         if (! $acc) {
             throw ValidationException::withMessages([
-                'receivable_account_id' => 'Akun Piutang Usaha (111200) tidak ditemukan/postable di COA. '
-                    . 'Pastikan akun 111200 ada dan punya minimal 1 sub-akun postable bila sudah jadi HEADER.',
+                'receivable_account_id' => 'Akun Piutang Usaha tidak ditemukan/postable di COA. '
+                    . 'Pastikan ada akun dengan role "receivable_usaha" atau kode 111200 yang postable.',
             ]);
         }
 

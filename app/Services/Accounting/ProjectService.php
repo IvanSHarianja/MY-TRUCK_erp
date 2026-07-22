@@ -140,7 +140,8 @@ class ProjectService
         }
 
         // Akun Uang Muka Proyek (221170) — fallback ke first child kalau HEADER
-        $uangMuka = Account::findPostableByCode('221170', $company->id);
+        // Sprint 2.5: role-based
+        $uangMuka = Account::findByRoleOrCode(\App\Enums\AccountRole::UangMukaProyek, '221170', $company->id);
 
         if (! $uangMuka) {
             throw ValidationException::withMessages([

@@ -70,6 +70,29 @@ enum QuickTransactionType: string
     }
 
     /**
+     * Role akun sisi FIXED (Sprint 2.5). Dipakai untuk lookup akun tanpa
+     * tergantung kode standar MY-TRUCK. Tenant yang pakai kode custom
+     * (misal '300000-01' untuk modal) tinggal set role = equity_modal.
+     */
+    public function fixedRole(): AccountRole
+    {
+        return match ($this) {
+            self::BebanSolar      => AccountRole::CogsBbm,
+            self::BebanGaji       => AccountRole::OpexGaji,
+            self::BebanSparepart  => AccountRole::CogsMaintenance,
+            self::BebanMob        => AccountRole::CogsMobilisasi,
+            self::BebanSubkon     => AccountRole::CogsSubkontraktor,
+            self::BebanRetribusi  => AccountRole::OpexPajakPerizinan,
+            self::BebanKantor     => AccountRole::OpexAdmin,
+            self::BebanPenyusutan => AccountRole::OpexPenyusutan,
+            self::PendapatanLain  => AccountRole::RevenueLain,
+            self::BayarUtang      => AccountRole::PayableVendor,
+            self::SetorModal      => AccountRole::EquityModal,
+            self::Prive           => AccountRole::EquityPrive,
+        };
+    }
+
+    /**
      * Sisi mana fixedAccount berada di jurnal:
      * - 'debit'  → fixedAccount di Dr, counterAccount di Cr (beban, prive)
      * - 'kredit' → fixedAccount di Cr, counterAccount di Dr (pendapatan, setoran modal)

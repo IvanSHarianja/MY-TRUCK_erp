@@ -75,10 +75,11 @@ class RitLogObserver
             ->where('code', 'ARMD')
             ->first();
 
-        $accBbm   = Account::findPostableByCode('551100', $company->id);
-        $accGaji  = Account::findPostableByCode('552200', $company->id);
-        $accPremi = Account::findPostableByCode('551200', $company->id);
-        $accKas   = Account::findPostableByCode('111100', $company->id);
+        // Sprint 2.5: role-based lookup dengan fallback code
+        $accBbm   = Account::findByRoleOrCode(\App\Enums\AccountRole::CogsBbm, '551100', $company->id);
+        $accGaji  = Account::findByRoleOrCode(\App\Enums\AccountRole::OpexGaji, '552200', $company->id);
+        $accPremi = Account::findByRoleOrCode(\App\Enums\AccountRole::CogsPremiUangJalan, '551200', $company->id);
+        $accKas   = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
 
         if (! $accKas) {
             Log::warning("RitLogObserver: akun Kas (111100) tidak ditemukan/postable untuk company {$company->id}. Skip auto-post.");

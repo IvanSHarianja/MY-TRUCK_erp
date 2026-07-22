@@ -41,16 +41,9 @@ class IncomeStatementByAssetService
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
             ->where('je.document_type', '!=', 'pembalik')
-            ->where('je.period_year', '<=', $year)
-            ->when($month !== null, function ($q) use ($year, $month) {
-                $q->where(function ($q2) use ($year, $month) {
-                    $q2->where('je.period_year', '<', $year)
-                        ->orWhere(function ($q3) use ($year, $month) {
-                            $q3->where('je.period_year', $year)
-                                ->where('je.period_month', '<=', $month);
-                        });
-                });
-            })
+            // BUG-16: L/R per aset hanya periode berjalan, bukan kumulatif
+            ->where('je.period_year', $year)
+            ->when($month !== null, fn ($q) => $q->where('je.period_month', '<=', $month))
             ->whereNotNull('jl.asset_id')
             ->selectRaw("
                 jl.asset_id,

@@ -130,12 +130,30 @@ class DepreciationService
             return false;
         }
 
-        // Resolve akun
-        $accBeban = Account::findPostableByCode($asset->defaultExpenseAccountCode(), $company->id);
-        $accAkumulasi = Account::findPostableByCode($asset->defaultAkumulasiCode(), $company->id);
+        // Sprint 2.5: role-based lookup dengan fallback code.
+        // Beban penyusutan: semua tipe asset pakai role opex_penyusutan (552100).
+        // Akumulasi: per tipe (armada/kantor/kendaraan) → role berbeda.
+        $accBeban = Account::findByRoleOrCode(
+            \App\Enums\AccountRole::OpexPenyusutan,
+            $asset->defaultExpenseAccountCode(),
+            $company->id,
+        );
+
+        $akumulasiRole = match ($asset->defaultAkumulasiCode()) {
+            '112105' => \App\Enums\AccountRole::AkumulasiArmada,
+            '112115' => \App\Enums\AccountRole::AkumulasiKantor,
+            '112125' => \App\Enums\AccountRole::AkumulasiKendaraan,
+            default  => \App\Enums\AccountRole::AkumulasiKantor,
+        };
+
+        $accAkumulasi = Account::findByRoleOrCode(
+            $akumulasiRole,
+            $asset->defaultAkumulasiCode(),
+            $company->id,
+        );
 
         if (! $accBeban || ! $accAkumulasi) {
-            throw new \RuntimeException("Akun beban ({$asset->defaultExpenseAccountCode()}) atau akumulasi ({$asset->defaultAkumulasiCode()}) tidak ditemukan/postable.");
+            throw new \RuntimeException("Akun beban ({$asset->defaultExpenseAccountCode()}) atau akumulasi ({$asset->defaultAkumulasiCode()}) tidak ditemukan/postable. Set role di master COA atau tambah akun standar.");
         }
 
         // BU tag dari asset (dump_truck→ARMD, excavator/etc→RENT, kantor→UMUM)

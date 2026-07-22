@@ -31,7 +31,15 @@ class IncomeStatementService
         ?int $month = null,
         ?int $businessUnitId = null,
     ): array {
-        $balances = $this->trialBalance->getBalances($companyId, $year, $month, $businessUnitId);
+        // BUG-16: laporan L/R HARUS pakai scope 'period' (hanya tahun $year),
+        // bukan 'cumulative' (yang mencakup tahun-tahun sebelumnya).
+        // Kalau pakai cumulative: pendapatan 2025 + 2026 + 2027 akan dijumlah
+        // saat buka laporan 2027 → laba bersih overstate.
+        $balances = $this->trialBalance->getBalances(
+            $companyId, $year, $month, $businessUnitId,
+            includeZero: false,
+            scopeMode: 'period',
+        );
 
         // Pakai category + sub_category dari accounts (lebih reliable daripada parse kode)
         $pendapatan = $balances->filter(fn ($r) => $r->category === 'pendapatan')->values();

@@ -121,7 +121,7 @@ class MaterialSaleService
                 ]);
             }
         } else {
-            $kasAccount = Account::findPostableByCode('111100', $company->id);
+            $kasAccount = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
         }
 
         if (! $kasAccount) {
@@ -131,8 +131,8 @@ class MaterialSaleService
             ]);
         }
 
-        // Resolve akun pendapatan material (441300) — fallback ke first child kalau HEADER
-        $revenueAccount = Account::findPostableByCode('441300', $company->id);
+        // Sprint 2.5: role-based (revenue_matl) fallback code 441300
+        $revenueAccount = Account::findByRoleOrCode(\App\Enums\AccountRole::RevenueMatl, '441300', $company->id);
 
         if (! $revenueAccount) {
             throw ValidationException::withMessages([
@@ -238,15 +238,46 @@ class MaterialSaleService
     {
         $hargaPokok = (float) $sale->material->harga_pokok;
         if ($hargaPokok <= 0) {
-            Log::info("MaterialSaleService::postCogs: material {$sale->material->code} belum di-set harga_pokok. Skip HPP untuk sale {$sale->sale_number}. Set harga_pokok di master material untuk aktifkan HPP posting.");
+            // Business decision (2026-07-20): HPP OPTIONAL. Kalau kosong,
+            // sale tetap sukses tapi jurnal HPP di-skip → laba kotor overstate.
+            // Notifikasi warning ke log + Filament (jika di context UI) supaya
+            // user tetap sadar. Ini opsi B (aware skip) — bukan silent skip lama.
+            Log::warning(sprintf(
+                'MaterialSale %s: HPP tidak posted karena material [%s] %s belum di-set harga_pokok. Laba kotor untuk sale ini akan overstate. Set harga_pokok di master material lalu manual re-post HPP kalau perlu akurasi.',
+                $sale->sale_number,
+                $sale->material->code,
+                $sale->material->name,
+            ));
+
+            // Tampilkan Filament warning notification kalau ada UI context.
+            // Sengaja tidak throw — sale sukses, user hanya diberitahu.
+            if (class_exists(\Filament\Notifications\Notification::class) && app()->runningInConsole() === false) {
+                try {
+                    \Filament\Notifications\Notification::make()
+                        ->title('HPP tidak posted')
+                        ->body(sprintf(
+                            'Material [%s] %s belum di-set Harga Pokok. Sale %s tetap sukses, tapi jurnal HPP di-skip — laba kotor untuk sale ini akan overstate. Set HPP di master material bila ingin laporan L/R lebih akurat.',
+                            $sale->material->code,
+                            $sale->material->name,
+                            $sale->sale_number,
+                        ))
+                        ->warning()
+                        ->persistent()
+                        ->send();
+                } catch (\Throwable) {
+                    // ignore — notification bisa gagal di background queue / test env
+                }
+            }
+
             return;
         }
 
         $totalHpp = round((float) $sale->volume * $hargaPokok, 2);
         if ($totalHpp <= 0) return;
 
-        $accHpp = Account::findPostableByCode('551300', $company->id);
-        $accKas = Account::findPostableByCode('111100', $company->id);
+        // Sprint 2.5: role-based
+        $accHpp = Account::findByRoleOrCode(\App\Enums\AccountRole::CogsMaterial, '551300', $company->id);
+        $accKas = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
 
         if (! $accHpp || ! $accKas) {
             Log::warning("MaterialSaleService::postCogs: akun 551300 atau 111100 tidak ditemukan/postable untuk company {$company->id}. Skip HPP {$sale->sale_number}.");

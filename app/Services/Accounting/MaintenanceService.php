@@ -108,8 +108,9 @@ class MaintenanceService
             ->first();
 
         // Akun beban (551400) & kas (111100)
-        $accBeban = Account::findPostableByCode('551400', $company->id);
-        $accKas   = Account::findPostableByCode('111100', $company->id);
+        // Sprint 2.5: role-based lookup dengan fallback code
+        $accBeban = Account::findByRoleOrCode(\App\Enums\AccountRole::CogsMaintenance, '551400', $company->id);
+        $accKas   = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
 
         if (! $accBeban || ! $accKas) {
             Log::warning("MaintenanceService: akun 551400 atau 111100 tidak ditemukan/postable untuk company {$company->id}. Skip auto-post log {$log->id}.");
