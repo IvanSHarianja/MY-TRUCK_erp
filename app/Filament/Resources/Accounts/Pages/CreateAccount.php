@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Accounts\Pages;
 
+use App\Enums\AccountRole;
 use App\Filament\Resources\Accounts\AccountResource;
 use App\Models\Account;
 use Filament\Facades\Filament;
@@ -27,6 +28,22 @@ class CreateAccount extends CreateRecord
                 ->first();
 
             if ($parent) {
+                // Inherit role dari parent — sub-akun biasanya berbagi role
+                // dengan parent (mis. "Kas & Bank" role='cash', child "Bank Mandiri"
+                // & "Bank BCA" juga role='cash').
+                //
+                // Fallback: kalau parent tidak punya role (mis. akun HEADER lama
+                // yang belum di-set role), coba suggest dari nama parent.
+                // Header "Kas & Bank" → suggest AccountRole::Cash.
+                $parentRole = $parent->role instanceof AccountRole
+                    ? $parent->role->value
+                    : $parent->role;
+
+                if (! $parentRole) {
+                    $suggested = AccountRole::suggestFromName($parent->name);
+                    $parentRole = $suggested?->value;
+                }
+
                 $this->form->fill([
                     'parent_code'        => $parent->code,
                     'code'               => Account::suggestChildCode($parent->code, $tenant->getKey()),
@@ -34,6 +51,7 @@ class CreateAccount extends CreateRecord
                     'sub_category'       => $parent->sub_category,
                     'normal_balance'     => $parent->normal_balance,
                     'cash_flow_category' => $parent->cash_flow_category,
+                    'role'               => $parentRole,
                     'tax_type'           => $parent->tax_type ?? 'non_pajak',
                     'is_active'          => true,
                 ]);
