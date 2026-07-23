@@ -4,13 +4,25 @@ namespace App\Filament\Pages\Tenancy;
 
 use App\Models\AccountingPeriod;
 use App\Models\Account;
+use App\Models\ArmadaContract;
 use App\Models\Asset;
+use App\Models\AssetMaintenanceLog;
 use App\Models\BusinessUnit;
 use App\Models\Client;
 use App\Models\Company;
 use App\Models\Employee;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Models\Material;
+use App\Models\MaterialSale;
+use App\Models\Payment;
+use App\Models\Project;
+use App\Models\ProjectProgress;
+use App\Models\ProjectTermin;
+use App\Models\RentalContract;
+use App\Models\RentalLog;
+use App\Models\RitLog;
 use App\Models\Vendor;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
@@ -209,37 +221,60 @@ class EditCompanyProfile extends EditTenantProfile
                         ->wherePivot('is_active', true)
                         ->first();
 
-                    // Manual ordered delete — TIDAK pakai cascade MySQL karena urutan tidak terjamin.
-                    // FK `journal_entry_lines.account_id` ke `accounts` adalah RESTRICT (safeguard),
-                    // jadi kita harus hapus child dulu sebelum parent.
+                    // Manual ordered delete — leaves-first (child before parent).
+                    // Beberapa FK adalah RESTRICT (safeguard integrity di runtime app),
+                    // jadi kita perlu hapus tabel operasional DULU sebelum master.
+                    //
+                    // Dependency chain (yang harus dihapus DULU):
+                    //   rit_logs        → armada_contracts → assets
+                    //   rental_logs     → rental_contracts → assets
+                    //   maintenance_logs → assets
+                    //   payments        → invoices → clients
+                    //   material_sales  → materials, clients
+                    //   project_*       → clients
+                    //   employees       → assets (nullOnDelete, safe)
                     DB::transaction(function () use ($tenantId) {
-                        // 1. Hapus journal lines (depends on accounts via RESTRICT)
+                        // === PHASE 1: Buku Besar (paling leaf) ===
                         $journalIds = JournalEntry::where('company_id', $tenantId)->pluck('id');
                         JournalEntryLine::whereIn('journal_entry_id', $journalIds)->delete();
-
-                        // 2. Hapus journal entries
                         JournalEntry::where('company_id', $tenantId)->delete();
-
-                        // 3. Hapus accounting periods
                         AccountingPeriod::where('company_id', $tenantId)->delete();
 
-                        // 4. Hapus employees (refs assets via nullOnDelete; safe but explicit)
+                        // === PHASE 2: Operasional transaksional (yang reference assets/clients) ===
+                        // Log operasional dulu (reference assets)
+                        RitLog::where('company_id', $tenantId)->delete();
+                        RentalLog::where('company_id', $tenantId)->delete();
+                        AssetMaintenanceLog::where('company_id', $tenantId)->delete();
+
+                        // Kontrak (setelah log-nya kosong)
+                        ArmadaContract::where('company_id', $tenantId)->delete();
+                        RentalContract::where('company_id', $tenantId)->delete();
+
+                        // Payment dulu (reference invoices), lalu invoices
+                        Payment::where('company_id', $tenantId)->delete();
+                        Invoice::where('company_id', $tenantId)->delete();
+
+                        // Material sales (reference materials + clients)
+                        MaterialSale::where('company_id', $tenantId)->delete();
+
+                        // Project chain — progress & termin dulu, baru project
+                        $projectIds = Project::where('company_id', $tenantId)->pluck('id');
+                        ProjectProgress::whereIn('project_id', $projectIds)->delete();
+                        ProjectTermin::whereIn('project_id', $projectIds)->delete();
+                        Project::where('company_id', $tenantId)->delete();
+
+                        // === PHASE 3: Master data operasional ===
                         Employee::where('company_id', $tenantId)->delete();
-
-                        // 5. Hapus assets (refs accounts via nullOnDelete; safe but explicit)
                         Asset::where('company_id', $tenantId)->delete();
-
-                        // 6. Hapus master data lain (depends only on company)
+                        Material::where('company_id', $tenantId)->delete();
                         Client::where('company_id', $tenantId)->delete();
                         Vendor::where('company_id', $tenantId)->delete();
 
-                        // 7. Hapus accounts & business_units
+                        // === PHASE 4: Master data akuntansi ===
                         Account::where('company_id', $tenantId)->delete();
                         BusinessUnit::where('company_id', $tenantId)->delete();
 
-                        // 8. Pivot company_user akan cascade saat company di-delete (kita biarkan)
-
-                        // 9. Hapus company terakhir
+                        // === PHASE 5: Company terakhir (pivot company_user auto-cascade) ===
                         Company::where('id', $tenantId)->delete();
                     });
 
