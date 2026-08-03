@@ -9,6 +9,7 @@ use App\Services\Accounting\PaymentService;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
@@ -198,6 +199,8 @@ class InvoicesTable
                         Textarea::make('description')
                             ->label('Catatan')
                             ->rows(2),
+
+                        FileUpload::make('bukti_tf_path')->buktiTf(),
                     ])
                     ->action(function (array $data, Invoice $record) {
                         try {
@@ -209,6 +212,7 @@ class InvoicesTable
                                 paymentDate: \Carbon\Carbon::parse($data['payment_date']),
                                 referenceNumber: $data['reference_number'] ?? null,
                                 description: $data['description'] ?? null,
+                                buktiTfPath: $data['bukti_tf_path'] ?? null,
                             );
                             Notification::make()->title('Pembayaran diterima & jurnal di-post otomatis')->success()->send();
                         } catch (\Illuminate\Validation\ValidationException $e) {

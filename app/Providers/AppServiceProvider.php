@@ -14,6 +14,8 @@ use App\Observers\JournalEntryObserver;
 use App\Observers\RentalContractObserver;
 use App\Observers\RentalLogObserver;
 use App\Observers\RitLogObserver;
+use Filament\Facades\Filament;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Support\RawJs;
 use Illuminate\Support\ServiceProvider;
@@ -60,6 +62,27 @@ class AppServiceProvider extends ServiceProvider
                 ->rules(['numeric', 'min:0'])
                 ->mask(RawJs::make("\$money(\$input, ',', '.', 0)"))
                 ->stripCharacters(['.']);
+        });
+
+        // ->buktiTf() macro — FileUpload untuk bukti transfer (opsional).
+        // Auto-resize max 1920px di client (Filament imageEditor), max 5MB.
+        // Directory: bukti-tf/{company_id}/{YYYY}/{MM}/.
+        FileUpload::macro('buktiTf', function () {
+            /** @var FileUpload $this */
+            return $this
+                ->label('Bukti Transfer (opsional)')
+                ->image()
+                ->imageEditor()
+                ->imageResizeMode('contain')
+                ->imageResizeTargetWidth(1920)
+                ->maxSize(5120)
+                ->disk('public')
+                ->directory(fn () => sprintf(
+                    'bukti-tf/%s/%s',
+                    optional(Filament::getTenant())?->id ?? 'shared',
+                    now()->format('Y/m'),
+                ))
+                ->helperText('Foto struk/screenshot transfer. Auto-resize max 1920px, max 5MB.');
         });
     }
 }

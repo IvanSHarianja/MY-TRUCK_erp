@@ -10,6 +10,7 @@ use Filament\Actions\ActionGroup;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
@@ -159,6 +160,8 @@ class ProjectsTable
                             Textarea::make('notes')
                                 ->label('Catatan')
                                 ->rows(2),
+
+                            FileUpload::make('bukti_tf_path')->buktiTf(),
                         ])
                         ->modalHeading('Terima Uang Muka Proyek')
                         ->modalDescription('Jurnal otomatis: Dr Kas/Bank, Cr Uang Muka Proyek (221170)')
@@ -171,6 +174,7 @@ class ProjectsTable
                                     amount: (float) $data['amount'],
                                     date: \Carbon\Carbon::parse($data['dp_date']),
                                     notes: $data['notes'] ?? null,
+                                    buktiTfPath: $data['bukti_tf_path'] ?? null,
                                 );
                                 Notification::make()
                                     ->title('DP diterima — jurnal otomatis di-post')

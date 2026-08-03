@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Models\Concerns\HasBuktiTf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\Support\LogOptions;
@@ -11,6 +12,7 @@ use Spatie\Activitylog\Models\Concerns\LogsActivity;
 class MaterialSale extends Model
 {
     use BelongsToCompany;
+    use HasBuktiTf;
     use LogsActivity;
 
     public function getActivitylogOptions(): LogOptions
@@ -36,6 +38,7 @@ class MaterialSale extends Model
         'journal_entry_id',
         'notes',
         'created_by',
+        'bukti_tf_path',
     ];
 
     protected $casts = [

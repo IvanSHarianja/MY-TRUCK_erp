@@ -10,6 +10,7 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -163,6 +164,10 @@ class RitLogsRelationManager extends RelationManager
                 Textarea::make('notes')
                     ->label('Catatan')
                     ->rows(2)
+                    ->columnSpanFull(),
+
+                FileUpload::make('bukti_tf_path')
+                    ->buktiTf()
                     ->columnSpanFull(),
             ]);
     }

@@ -45,6 +45,7 @@ class QuickTransactionService
         ?int $businessUnitId = null,
         ?string $description = null,
         ?string $method = null,
+        ?string $buktiTfPath = null,
     ): JournalEntry {
         if ($amount <= 0) {
             throw ValidationException::withMessages([
@@ -195,6 +196,7 @@ class QuickTransactionService
                 'posted_by' => Auth::id(),
                 'posted_at' => now(),
                 'total_amount' => $amount,
+                'bukti_tf_path' => $buktiTfPath,
             ],
             linesFactory: fn(JournalEntry $entry): array => [
                 [

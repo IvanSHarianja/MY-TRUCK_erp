@@ -61,6 +61,7 @@ class PaymentService
         ?CarbonInterface $paymentDate = null,
         ?string $referenceNumber = null,
         ?string $description = null,
+        ?string $buktiTfPath = null,
     ): Payment {
         if ($amount <= 0) {
             throw ValidationException::withMessages([
@@ -84,7 +85,7 @@ class PaymentService
 
         return DB::transaction(function () use (
             $invoice, $cashAccount, $amount, $payDate, $referenceNumber,
-            $description, $company, $receivable
+            $description, $company, $receivable, $buktiTfPath
         ) {
             // 2 request pay() bareng: sebelumnya keduanya baca paid_amount sama,
             // both write. Sekarang MySQL block request kedua sampai commit pertama.
@@ -171,6 +172,7 @@ class PaymentService
                 'description'      => $description,
                 'journal_entry_id' => $journal->id,
                 'created_by'       => Auth::id() ?? $invoice->created_by,
+                'bukti_tf_path'    => $buktiTfPath,
             ]);
 
             $newPaid = (float) $invoice->paid_amount + $amount;

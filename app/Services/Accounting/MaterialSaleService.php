@@ -90,6 +90,7 @@ class MaterialSaleService
                 'metode'       => $metode,
                 'cash_account_id' => $data['cash_account_id'] ?? null,
                 'notes'        => $data['notes'] ?? null,
+                'bukti_tf_path' => $data['bukti_tf_path'] ?? null,
                 // BUG-27: fallback ke $data['created_by'] untuk CLI/queue context
                 //         (Auth::id() null di luar HTTP request).
                 'created_by'   => Auth::id() ?? ($data['created_by'] ?? 1),

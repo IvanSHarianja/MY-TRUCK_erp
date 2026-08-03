@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Models\Concerns\HasBuktiTf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class JournalEntry extends Model
 {
     use BelongsToCompany;
+    use HasBuktiTf;
 
     protected $fillable = [
         'company_id',
@@ -27,6 +29,7 @@ class JournalEntry extends Model
         'posted_by',
         'posted_at',
         'reversed_by_id',
+        'bukti_tf_path',
     ];
 
     protected function casts(): array

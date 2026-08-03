@@ -111,6 +111,7 @@ class ProjectService
         float $amount,
         ?CarbonInterface $date = null,
         ?string $notes = null,
+        ?string $buktiTfPath = null,
     ): JournalEntry {
         if ($amount <= 0) {
             throw ValidationException::withMessages([
@@ -172,7 +173,7 @@ class ProjectService
             ->first();
 
         return DB::transaction(function () use (
-            $project, $cashAccount, $amount, $dpDate, $notes, $company, $uangMuka, $bongUnit
+            $project, $cashAccount, $amount, $dpDate, $notes, $company, $uangMuka, $bongUnit, $buktiTfPath
         ) {
             // BUG-09: Lock project + re-hitung validasi setelah lock.
             // Cegah 2 request terimaDP() bareng yang lolos validasi awal
@@ -224,6 +225,7 @@ class ProjectService
                     'posted_by'        => Auth::id() ?? $project->created_by,
                     'posted_at'        => now(),
                     'total_amount'     => $amount,
+                    'bukti_tf_path'    => $buktiTfPath,
                 ],
                 linesFactory:     fn (JournalEntry $entry): array => [
                     [

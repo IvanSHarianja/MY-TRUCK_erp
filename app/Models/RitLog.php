@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
+use App\Models\Concerns\HasBuktiTf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class RitLog extends Model
 {
     use BelongsToCompany;
+    use HasBuktiTf;
 
     protected $fillable = [
         'company_id',
@@ -26,6 +28,7 @@ class RitLog extends Model
         'invoice_id',
         'notes',
         'created_by',
+        'bukti_tf_path',
     ];
 
     protected $casts = [

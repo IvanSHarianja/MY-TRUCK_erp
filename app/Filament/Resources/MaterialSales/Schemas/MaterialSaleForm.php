@@ -6,6 +6,7 @@ use App\Models\Account;
 use App\Models\Material;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -153,6 +154,10 @@ class MaterialSaleForm
                         Textarea::make('notes')
                             ->label('Catatan')
                             ->rows(2)
+                            ->columnSpanFull(),
+
+                        FileUpload::make('bukti_tf_path')
+                            ->buktiTf()
                             ->columnSpanFull(),
                     ]),
 

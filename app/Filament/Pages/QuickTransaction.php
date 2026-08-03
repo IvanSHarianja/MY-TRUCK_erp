@@ -13,6 +13,7 @@ use BackedEnum;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -205,6 +206,10 @@ class QuickTransaction extends Page implements HasForms, HasTable
                             ->columnSpanFull()
                             ->maxLength(500)
                             ->placeholder('Opsional — kosongkan untuk pakai label default jenis transaksi'),
+
+                        FileUpload::make('bukti_tf_path')
+                            ->buktiTf()
+                            ->columnSpanFull(),
                     ]),
             ]);
     }
@@ -242,6 +247,7 @@ class QuickTransaction extends Page implements HasForms, HasTable
                 businessUnitId: $state['business_unit_id'] ?? null,
                 description:    $state['description'] ?? null,
                 method:         $state['method'] ?? null,
+                buktiTfPath:    $state['bukti_tf_path'] ?? null,
             );
 
             Notification::make()

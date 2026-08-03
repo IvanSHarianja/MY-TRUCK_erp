@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\MaintenanceType;
 use App\Models\Concerns\BelongsToCompany;
+use App\Models\Concerns\HasBuktiTf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Activitylog\Support\LogOptions;
@@ -26,6 +27,7 @@ use Spatie\Activitylog\Models\Concerns\LogsActivity;
 class AssetMaintenanceLog extends Model
 {
     use BelongsToCompany;
+    use HasBuktiTf;
     use LogsActivity;
 
     public function getActivitylogOptions(): LogOptions
@@ -51,6 +53,7 @@ class AssetMaintenanceLog extends Model
         'photo_url',
         'notes',
         'created_by',
+        'bukti_tf_path',
     ];
 
     protected $casts = [
