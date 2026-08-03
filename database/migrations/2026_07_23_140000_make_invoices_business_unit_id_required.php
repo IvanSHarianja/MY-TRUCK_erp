@@ -35,17 +35,41 @@ return new class extends Migration
                 }
             });
 
-        // 2. Ubah kolom jadi NOT NULL (MySQL only — SQLite in-memory test
-        //    tidak mudah alter, dan tidak perlu — schema utuh dari migrasi awal).
+        // 2. Ubah kolom jadi NOT NULL. FK asli pakai ON DELETE SET NULL
+        //    yang mengharuskan kolom nullable — jadi drop FK dulu, alter kolom,
+        //    baru re-add FK dengan RESTRICT (BU tidak bisa dihapus kalau
+        //    masih dipakai invoice — invoice pasti punya lini bisnis).
         if (DB::connection()->getDriverName() === 'mysql') {
+            Schema::table('invoices', function ($table) {
+                $table->dropForeign(['business_unit_id']);
+            });
+
             DB::statement('ALTER TABLE invoices MODIFY business_unit_id BIGINT UNSIGNED NOT NULL');
+
+            Schema::table('invoices', function ($table) {
+                $table->foreign('business_unit_id')
+                    ->references('id')
+                    ->on('business_units')
+                    ->restrictOnDelete();
+            });
         }
     }
 
     public function down(): void
     {
         if (DB::connection()->getDriverName() === 'mysql') {
+            Schema::table('invoices', function ($table) {
+                $table->dropForeign(['business_unit_id']);
+            });
+
             DB::statement('ALTER TABLE invoices MODIFY business_unit_id BIGINT UNSIGNED NULL');
+
+            Schema::table('invoices', function ($table) {
+                $table->foreign('business_unit_id')
+                    ->references('id')
+                    ->on('business_units')
+                    ->nullOnDelete();
+            });
         }
     }
 };
