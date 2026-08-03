@@ -90,7 +90,9 @@ class MaterialSaleService
                 'metode'       => $metode,
                 'cash_account_id' => $data['cash_account_id'] ?? null,
                 'notes'        => $data['notes'] ?? null,
-                'created_by'   => Auth::id(),
+                // BUG-27: fallback ke $data['created_by'] untuk CLI/queue context
+                //         (Auth::id() null di luar HTTP request).
+                'created_by'   => Auth::id() ?? ($data['created_by'] ?? 1),
             ]);
 
             if ($metode === 'tunai') {
@@ -143,42 +145,43 @@ class MaterialSaleService
 
         $saleDate = Carbon::parse($sale->sale_date);
 
-        $journal = JournalEntry::create([
-            'company_id'       => $sale->company_id,
-            'entry_number'     => $this->journalService->generateEntryNumber($company, $saleDate),
-            'entry_date'       => $saleDate,
-            'document_number'  => $sale->sale_number,
-            'document_type'    => 'bkm',
-            'business_unit_id' => optional($matlUnit)->id,
-            'description'      => 'Penjualan tunai ' . $sale->material->name
-                . ' ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
-                . ' — ' . $sale->client->name,
-            'period_year'      => $saleDate->year,
-            'period_month'     => $saleDate->month,
-            'status'           => 'posted',
-            'created_by'       => Auth::id() ?? $sale->created_by,
-            'posted_by'        => Auth::id() ?? $sale->created_by,
-            'posted_at'        => now(),
-            'total_amount'     => $sale->total,
-        ]);
-
-        JournalEntryLine::create([
-            'journal_entry_id' => $journal->id,
-            'account_id'       => $kasAccount->id,
-            'description'      => 'Penerimaan tunai penjualan material',
-            'debit'            => $sale->total,
-            'kredit'           => 0,
-            'sort_order'       => 1,
-        ]);
-
-        JournalEntryLine::create([
-            'journal_entry_id' => $journal->id,
-            'account_id'       => $revenueAccount->id,
-            'description'      => 'Pendapatan ' . $sale->material->name,
-            'debit'            => 0,
-            'kredit'           => $sale->total,
-            'sort_order'       => 2,
-        ]);
+        // BUG-11: Refactor pakai createEntryWithLines
+        $journal = $this->journalService->createEntryWithLines(
+            company:          $company,
+            date:             $saleDate,
+            entryDataFactory: fn (string $entryNumber): array => [
+                'company_id'       => $sale->company_id,
+                'entry_number'     => $entryNumber,
+                'entry_date'       => $saleDate,
+                'document_number'  => $sale->sale_number,
+                'document_type'    => 'bkm',
+                'business_unit_id' => optional($matlUnit)->id,
+                'description'      => 'Penjualan tunai ' . $sale->material->name
+                    . ' ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
+                    . ' — ' . $sale->client->name,
+                'period_year'      => $saleDate->year,
+                'period_month'     => $saleDate->month,
+                'status'           => 'posted',
+                'created_by'       => Auth::id() ?? $sale->created_by,
+                'posted_by'        => Auth::id() ?? $sale->created_by,
+                'posted_at'        => now(),
+                'total_amount'     => $sale->total,
+            ],
+            linesFactory:     fn (JournalEntry $entry): array => [
+                [
+                    'account_id'  => $kasAccount->id,
+                    'description' => 'Penerimaan tunai penjualan material',
+                    'debit'       => $sale->total,
+                    'kredit'      => 0,
+                ],
+                [
+                    'account_id'  => $revenueAccount->id,
+                    'description' => 'Pendapatan ' . $sale->material->name,
+                    'debit'       => 0,
+                    'kredit'      => $sale->total,
+                ],
+            ],
+        );
 
         $sale->update(['journal_entry_id' => $journal->id]);
     }
@@ -286,41 +289,42 @@ class MaterialSaleService
 
         $saleDate = Carbon::parse($sale->sale_date);
 
-        $journal = JournalEntry::create([
-            'company_id'       => $sale->company_id,
-            'entry_number'     => $this->journalService->generateEntryNumber($company, $saleDate),
-            'entry_date'       => $saleDate,
-            'document_number'  => 'HPP-' . $sale->sale_number,
-            'document_type'    => 'jual_beli',
-            'business_unit_id' => optional($matlUnit)->id,
-            'description'      => 'HPP penjualan material ' . $sale->material->name
-                . ' ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
-                . ' — ' . $sale->client->name,
-            'period_year'      => $saleDate->year,
-            'period_month'     => $saleDate->month,
-            'status'           => 'posted',
-            'created_by'       => Auth::id() ?? $sale->created_by,
-            'posted_by'        => Auth::id() ?? $sale->created_by,
-            'posted_at'        => now(),
-            'total_amount'     => $totalHpp,
-        ]);
-
-        JournalEntryLine::create([
-            'journal_entry_id' => $journal->id,
-            'account_id'       => $accHpp->id,
-            'description'      => 'HPP ' . $sale->material->name . ' × ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan,
-            'debit'            => $totalHpp,
-            'kredit'           => 0,
-            'sort_order'       => 1,
-        ]);
-
-        JournalEntryLine::create([
-            'journal_entry_id' => $journal->id,
-            'account_id'       => $accKas->id,
-            'description'      => 'Pembayaran material (asumsi tunai — MVP tanpa inventory)',
-            'debit'            => 0,
-            'kredit'           => $totalHpp,
-            'sort_order'       => 2,
-        ]);
+        // BUG-11: Refactor pakai createEntryWithLines
+        $this->journalService->createEntryWithLines(
+            company:          $company,
+            date:             $saleDate,
+            entryDataFactory: fn (string $entryNumber): array => [
+                'company_id'       => $sale->company_id,
+                'entry_number'     => $entryNumber,
+                'entry_date'       => $saleDate,
+                'document_number'  => 'HPP-' . $sale->sale_number,
+                'document_type'    => 'jual_beli',
+                'business_unit_id' => optional($matlUnit)->id,
+                'description'      => 'HPP penjualan material ' . $sale->material->name
+                    . ' ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
+                    . ' — ' . $sale->client->name,
+                'period_year'      => $saleDate->year,
+                'period_month'     => $saleDate->month,
+                'status'           => 'posted',
+                'created_by'       => Auth::id() ?? $sale->created_by,
+                'posted_by'        => Auth::id() ?? $sale->created_by,
+                'posted_at'        => now(),
+                'total_amount'     => $totalHpp,
+            ],
+            linesFactory:     fn (JournalEntry $entry): array => [
+                [
+                    'account_id'  => $accHpp->id,
+                    'description' => 'HPP ' . $sale->material->name . ' × ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan,
+                    'debit'       => $totalHpp,
+                    'kredit'      => 0,
+                ],
+                [
+                    'account_id'  => $accKas->id,
+                    'description' => 'Pembayaran material (asumsi tunai — MVP tanpa inventory)',
+                    'debit'       => 0,
+                    'kredit'      => $totalHpp,
+                ],
+            ],
+        );
     }
 }

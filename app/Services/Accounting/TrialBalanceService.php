@@ -150,7 +150,8 @@ class TrialBalanceService
         return [
             'total_debit'  => $totalDebit,
             'total_kredit' => $totalKredit,
-            'is_balanced'  => round($totalDebit, 2) === round($totalKredit, 2),
+            // BUG-18: epsilon tolerance
+            'is_balanced'  => abs($totalDebit - $totalKredit) < 0.005,
         ];
     }
 

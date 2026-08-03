@@ -83,10 +83,8 @@ class InvoiceForm
                         TextInput::make('amount')
                             ->label('Nominal (Rp)')
                             ->required()
-                            ->numeric()
                             ->default(0)
-                            ->prefix('Rp')
-                            ->minValue(0),
+                            ->rupiah(),
 
                         Textarea::make('description')
                             ->label('Keterangan / Uraian Penagihan')

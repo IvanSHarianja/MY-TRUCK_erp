@@ -77,21 +77,24 @@ class OperationalCostService
         }
 
         // Uang makan — flat per hari kerja
+        // BUG-29: kalau override_biaya=true tapi field override kosong (null),
+        // fallback ke standar contract (bukan paksa jadi 0).
         if ($includeOp && $jam > 0) {
+            $makanStandar = round((float) ($p['uang_makan_per_hari'] ?? 0), 2);
             $makan = $override
-                ? round((float) ($p['override_uang_makan'] ?? 0), 2)
-                : round((float) ($p['uang_makan_per_hari'] ?? 0), 2);
+                ? round((float) ($p['override_uang_makan'] ?? $makanStandar), 2)
+                : $makanStandar;
         }
 
         // Premi — per jam × jam kerja (opsional)
         if ($jam > 0) {
+            $premiPerJam = (float) ($p['premi_per_jam'] ?? 0);
+            $premiStandar = $premiPerJam > 0 ? round($jam * $premiPerJam, 2) : 0.0;
             if ($override) {
-                $premi = round((float) ($p['override_premi'] ?? 0), 2);
+                // BUG-29: override null → pakai standar contract
+                $premi = round((float) ($p['override_premi'] ?? $premiStandar), 2);
             } else {
-                $premiPerJam = (float) ($p['premi_per_jam'] ?? 0);
-                if ($premiPerJam > 0) {
-                    $premi = round($jam * $premiPerJam, 2);
-                }
+                $premi = $premiStandar;
             }
         }
 
@@ -151,27 +154,27 @@ class OperationalCostService
             }
         }
 
+        // BUG-29: override null → fallback ke standar contract
         if ($includeOp && $rit > 0) {
             $gaji = round((float) ($p['gaji_supir_per_hari'] ?? 0), 2);
 
+            $makanStandar = round((float) ($p['uang_makan_per_hari'] ?? 0), 2);
             $makan = $override
-                ? round((float) ($p['override_uang_makan'] ?? 0), 2)
-                : round((float) ($p['uang_makan_per_hari'] ?? 0), 2);
+                ? round((float) ($p['override_uang_makan'] ?? $makanStandar), 2)
+                : $makanStandar;
 
+            $ujStandar = round((float) ($p['uang_jalan_per_rit'] ?? 0) * $rit, 2);
             $uangJalan = $override
-                ? round((float) ($p['override_uang_jalan'] ?? 0), 2)
-                : round((float) ($p['uang_jalan_per_rit'] ?? 0) * $rit, 2);
+                ? round((float) ($p['override_uang_jalan'] ?? $ujStandar), 2)
+                : $ujStandar;
         }
 
         if ($rit > 0) {
-            if ($override) {
-                $premi = round((float) ($p['override_premi'] ?? 0), 2);
-            } else {
-                $premiPerRit = (float) ($p['premi_per_rit'] ?? 0);
-                if ($premiPerRit > 0) {
-                    $premi = round($rit * $premiPerRit, 2);
-                }
-            }
+            $premiPerRit = (float) ($p['premi_per_rit'] ?? 0);
+            $premiStandar = $premiPerRit > 0 ? round($rit * $premiPerRit, 2) : 0.0;
+            $premi = $override
+                ? round((float) ($p['override_premi'] ?? $premiStandar), 2)
+                : $premiStandar;
         }
 
         return [

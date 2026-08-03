@@ -138,7 +138,10 @@ class Invoice extends Model
         if ($this->isLunas() || $this->isVoid()) {
             return 0;
         }
-        return max(0, (int) $this->invoice_date->diffInDays(Carbon::today(), false));
+        // BUG-28: pakai timezone company (fallback ke app timezone). Multi-tenant
+        // lintas zona waktu tidak lagi off-by-1 hari di kolom aging.
+        $tz = optional($this->company)->timezone ?? config('app.timezone');
+        return max(0, (int) $this->invoice_date->diffInDays(Carbon::today($tz), false));
     }
 
     /** Kategori aging: lancar / perhatian / overdue */

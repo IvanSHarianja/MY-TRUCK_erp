@@ -20,10 +20,11 @@ class EditProject extends EditRecord
             $this->getCancelFormAction(),
 
             DeleteAction::make()
+                // BUG-19: epsilon tolerance
                 ->visible(fn (): bool =>
-                    (float) $this->record->tertagih_pct === 0.0
-                    && (float) $this->record->dp_diterima === 0.0
-                    && (float) $this->record->progress_pct === 0.0
+                    abs((float) $this->record->tertagih_pct) < 0.005
+                    && abs((float) $this->record->dp_diterima) < 0.005
+                    && abs((float) $this->record->progress_pct) < 0.005
                 ),
         ];
     }

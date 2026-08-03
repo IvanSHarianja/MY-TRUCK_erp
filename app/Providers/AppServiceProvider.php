@@ -14,6 +14,8 @@ use App\Observers\JournalEntryObserver;
 use App\Observers\RentalContractObserver;
 use App\Observers\RentalLogObserver;
 use App\Observers\RitLogObserver;
+use Filament\Forms\Components\TextInput;
+use Filament\Support\RawJs;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -48,5 +50,16 @@ class AppServiceProvider extends ServiceProvider
         // source (project.dp_diterima, log.journal_entry_id) yang tidak
         // otomatis di-handle oleh JournalService::void().
         JournalEntry::observe(JournalEntryObserver::class);
+
+        // ->rupiah() macro — format Indonesia (100.000.000). Display live
+        // saat user ketik, strip '.' sebelum submit → DB simpan angka murni.
+        TextInput::macro('rupiah', function () {
+            /** @var TextInput $this */
+            return $this
+                ->prefix('Rp')
+                ->rules(['numeric', 'min:0'])
+                ->mask(RawJs::make("\$money(\$input, ',', '.', 0)"))
+                ->stripCharacters(['.']);
+        });
     }
 }

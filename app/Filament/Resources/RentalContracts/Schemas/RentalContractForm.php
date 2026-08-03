@@ -57,9 +57,7 @@ class RentalContractForm
                         TextInput::make('tarif_per_jam')
                             ->label('Tarif per Jam (Rp)')
                             ->required()
-                            ->numeric()
-                            ->prefix('Rp')
-                            ->minValue(1)
+                            ->rupiah()
                             ->placeholder('contoh: 350000'),
 
                         DatePicker::make('started_at')
@@ -118,8 +116,7 @@ class RentalContractForm
 
                         TextInput::make('harga_bbm_per_liter')
                             ->label('Harga BBM (Rp/liter)')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('Kosongkan → pakai default company')
                             ->helperText('Isi bila harga solar untuk kontrak ini berbeda dari default company.'),
                     ]),
@@ -131,22 +128,19 @@ class RentalContractForm
                     ->schema([
                         TextInput::make('gaji_operator_per_hari')
                             ->label('Gaji Operator per Hari')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('contoh: 250000')
                             ->required(fn (Get $get): bool => (bool) $get('include_operator')),
 
                         TextInput::make('uang_makan_per_hari')
                             ->label('Uang Makan per Hari')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('contoh: 50000')
                             ->required(fn (Get $get): bool => (bool) $get('include_operator')),
 
                         TextInput::make('premi_per_jam')
                             ->label('Premi per Jam Kerja (opsional)')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('contoh: 15000')
                             ->helperText('Insentif per jam operasi. Kosongkan bila tidak ada premi.'),
                     ]),

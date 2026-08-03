@@ -19,25 +19,19 @@ class RentalContractObserver
     }
 
     /**
-     * Saat status kontrak berubah:
-     * - jadi 'aktif' → set asset aktif
-     * - jadi 'selesai'/'batal' → cek apakah masih ada kontrak aktif lain untuk asset itu
-     *   - kalau tidak ada → asset balik ke 'aktif' (status default untuk asset siap pakai)
+     * Saat status kontrak berubah jadi 'aktif' → asset ke 'aktif' juga.
+     * BUG-31: dulu ada `maybeReleaseAsset` yang set asset ke 'aktif'
+     * (semantik "siap pakai"). No-op karena target sama dengan default.
+     * Asset enum tidak punya 'idle' — kalau butuh, tambah via migrasi baru.
+     * Sekarang: observer hanya handle transisi ke aktif; release tidak
+     * ubah status asset (biar tidak mendorong asset yang lagi 'maintenance'
+     * balik ke 'aktif' secara tidak sengaja).
      */
     public function updated(RentalContract $contract): void
     {
-        if ($contract->wasChanged('status')) {
-            if ($contract->status === 'aktif') {
-                $this->markAssetAsActive($contract->asset_id);
-            } else {
-                $this->maybeReleaseAsset($contract->asset_id, $contract->id);
-            }
+        if ($contract->wasChanged('status') && $contract->status === 'aktif') {
+            $this->markAssetAsActive($contract->asset_id);
         }
-    }
-
-    public function deleted(RentalContract $contract): void
-    {
-        $this->maybeReleaseAsset($contract->asset_id, $contract->id);
     }
 
     private function markAssetAsActive(int $assetId): void
@@ -45,20 +39,5 @@ class RentalContractObserver
         Asset::withoutGlobalScopes()
             ->where('id', $assetId)
             ->update(['status' => 'aktif']);
-    }
-
-    private function maybeReleaseAsset(int $assetId, int $excludeContractId): void
-    {
-        $stillHasActive = RentalContract::withoutGlobalScopes()
-            ->where('asset_id', $assetId)
-            ->where('id', '!=', $excludeContractId)
-            ->where('status', 'aktif')
-            ->exists();
-
-        if (! $stillHasActive) {
-            Asset::withoutGlobalScopes()
-                ->where('id', $assetId)
-                ->update(['status' => 'aktif']);  // status default
-        }
     }
 }

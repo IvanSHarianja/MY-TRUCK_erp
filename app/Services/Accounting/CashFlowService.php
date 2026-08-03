@@ -114,8 +114,14 @@ class CashFlowService
                 ->unique()
                 ->toArray();
 
-            // Default kategori operasi jika tidak ketemu
-            $category = $lawanCategories[0] ?? 'operasi';
+            // BUG-21: Kalau tidak ada lawan non-kas → jurnal ini transfer
+            // antar akun kas (BCA→Mandiri, dll). Skip supaya tidak dobel-count
+            // di laporan Arus Kas (kedua sisi kas bakal iterated).
+            if (empty($lawanCategories)) {
+                continue;
+            }
+
+            $category = $lawanCategories[0];
 
             if ($category === 'non_kas') {
                 $category = 'operasi';

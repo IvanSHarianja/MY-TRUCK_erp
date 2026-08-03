@@ -92,7 +92,8 @@ class IncomeStatementMatrixService
             $totalRow = array_sum($perLini);
 
             // Skip jika total 0 (tidak relevan)
-            if (round($totalRow, 2) === 0.0) continue;
+            // BUG-18: epsilon (0 dengan toleransi float drift)
+            if (abs($totalRow) < 0.005) continue;
 
             $rowData = [
                 'code'    => $first->code,

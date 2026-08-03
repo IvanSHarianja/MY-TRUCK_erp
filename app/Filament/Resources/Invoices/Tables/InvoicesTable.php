@@ -187,9 +187,7 @@ class InvoicesTable
                         TextInput::make('amount')
                             ->label('Nominal (Rp)')
                             ->required()
-                            ->numeric()
-                            ->prefix('Rp')
-                            ->minValue(1)
+                            ->rupiah()
                             ->default(fn (Invoice $record) => (float) $record->sisa)
                             ->helperText(fn (Invoice $record) => 'Sisa piutang: Rp ' . number_format($record->sisa, 0, ',', '.')),
 

@@ -64,9 +64,7 @@ class ArmadaContractForm
                         TextInput::make('tarif_per_rit')
                             ->label('Tarif per Rit (Rp)')
                             ->required()
-                            ->numeric()
-                            ->prefix('Rp')
-                            ->minValue(1)
+                            ->rupiah()
                             ->placeholder('contoh: 250000'),
 
                         Textarea::make('notes')
@@ -113,8 +111,7 @@ class ArmadaContractForm
 
                         TextInput::make('harga_bbm_per_liter')
                             ->label('Harga BBM (Rp/liter)')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('Kosongkan → pakai default company')
                             ->helperText('Isi bila harga solar berbeda dari default company.'),
                     ]),
@@ -126,29 +123,25 @@ class ArmadaContractForm
                     ->schema([
                         TextInput::make('gaji_supir_per_hari')
                             ->label('Gaji Supir per Hari')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('contoh: 200000')
                             ->required(fn(Get $get): bool => (bool) $get('include_operator')),
 
                         TextInput::make('uang_makan_per_hari')
                             ->label('Uang Makan per Hari')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('contoh: 50000')
                             ->required(fn(Get $get): bool => (bool) $get('include_operator')),
 
                         TextInput::make('uang_jalan_per_rit')
                             ->label('Uang Jalan per Rit')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('contoh: 25000')
                             ->helperText('Biaya tol/parkir/dsb per trip. Opsional.'),
 
                         TextInput::make('premi_per_rit')
                             ->label('Premi per Rit (opsional)')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->placeholder('contoh: 10000')
                             ->helperText('Insentif per rit. Kosongkan bila tidak ada.'),
                     ]),

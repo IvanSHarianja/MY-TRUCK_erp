@@ -37,9 +37,8 @@ class MaterialForm
                 TextInput::make('harga_per_satuan')
                     ->label('Harga Jual per Satuan')
                     ->required()
-                    ->numeric()
                     ->default(0)
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->helperText('Harga jual default ke klien.'),
 
                 TextInput::make('harga_pokok')
@@ -50,10 +49,8 @@ class MaterialForm
                     // KONSEKUENSI: kalau HPP=0, jurnal HPP TIDAK terbentuk saat sale
                     // → laba kotor akan overstate. Notifikasi warning muncul di
                     // MaterialSaleService untuk tetap alert user (opsi B).
-                    ->numeric()
-                    ->minValue(0)
                     ->default(0)
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->helperText('Biaya modal per satuan. OPSIONAL — kalau diisi > 0 akan auto-post jurnal HPP setiap penjualan. Kalau kosong / 0, laba kotor = harga jual (overstate).'),
 
                 Select::make('satuan')

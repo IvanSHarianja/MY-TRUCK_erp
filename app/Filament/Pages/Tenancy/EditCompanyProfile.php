@@ -107,12 +107,10 @@ class EditCompanyProfile extends EditTenantProfile
                     ->schema([
                         TextInput::make('harga_solar_default')
                             ->label('Harga Solar Default (Rp/liter)')
-                            ->numeric()
-                            ->prefix('Rp')
+                            ->rupiah()
                             ->suffix('/ liter')
                             ->default(6800)
                             ->required()
-                            ->minValue(1)
                             ->helperText('Dipakai auto-hitung Beban BBM di RentalLog & RitLog. '
                                 . 'Kalau harga solar naik/turun, update di sini agar semua kontrak '
                                 . 'yang tidak override langsung ikut nilai baru. Log yang sudah terjurnal '

@@ -77,7 +77,8 @@ class BalanceSheetService
 
         $totalPasiva = $totalKewajiban + $totalEkuitas;
         $selisih     = round($totalAset - $totalPasiva, 2);
-        $isBalanced  = $selisih === 0.0;
+        // BUG-18: epsilon tolerance
+        $isBalanced  = abs($selisih) < 0.005;
 
         return compact(
             'asetLancar', 'totalAsetLancar',

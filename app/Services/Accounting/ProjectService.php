@@ -77,10 +77,24 @@ class ProjectService
                 'created_by'   => Auth::id() ?? $project->created_by,
             ]);
 
+            // BUG-26: jangan auto-selesai kalau tertagih_pct < 100.
+            // Proyek "selesai" harus juga tertagih penuh — kalau progress 100
+            // tapi masih ada termin belum tagih, user tidak bisa tagih ulang
+            // (tagihTermin butuh isBerjalan). Tolak transisi ke 'selesai'.
+            $canFinish = $progressPct >= 100 && (float) $project->tertagih_pct >= 100 - 0.005;
+            if ($progressPct >= 100 && ! $canFinish) {
+                throw ValidationException::withMessages([
+                    'progress_pct' => sprintf(
+                        'Proyek belum bisa ditutup: progress 100%% tapi tertagih baru %.2f%%. Tagih semua termin dulu.',
+                        (float) $project->tertagih_pct,
+                    ),
+                ]);
+            }
+
             $project->update([
                 'progress_pct' => $progressPct,
-                'status'       => $progressPct >= 100 ? 'selesai' : $project->status,
-                'ended_at'     => $progressPct >= 100 ? Carbon::today() : $project->ended_at,
+                'status'       => $canFinish ? 'selesai' : $project->status,
+                'ended_at'     => $canFinish ? Carbon::today() : $project->ended_at,
             ]);
 
             return $history;
@@ -112,7 +126,8 @@ class ProjectService
         $tertagihNilai = round((float) $project->nilai_kontrak * (float) $project->tertagih_pct / 100, 2);
         $sisaNilai     = round((float) $project->nilai_kontrak - $tertagihNilai - (float) $project->dp_diterima, 2);
 
-        if (round($amount, 2) > $sisaNilai) {
+        // BUG-20: epsilon +0.005 konsisten dengan tagihTermin
+        if (round($amount, 2) > $sisaNilai + 0.005) {
             throw ValidationException::withMessages([
                 'amount' => sprintf(
                     'DP Rp %s melebihi sisa nilai kontrak yang bisa diterima (Rp %s). '
@@ -159,49 +174,78 @@ class ProjectService
         return DB::transaction(function () use (
             $project, $cashAccount, $amount, $dpDate, $notes, $company, $uangMuka, $bongUnit
         ) {
-            $journal = JournalEntry::create([
-                'company_id'       => $project->company_id,
-                'entry_number'     => $this->journalService->generateEntryNumber($company, $dpDate),
-                'entry_date'       => $dpDate,
-                'document_number'  => 'DP-' . $project->project_number,
-                'document_type'    => 'bkm',
-                'business_unit_id' => optional($bongUnit)->id,
-                'description'      => 'Uang muka proyek ' . $project->project_number
-                    . ' — ' . $project->name
-                    . ($notes ? ' — ' . $notes : ''),
-                'period_year'      => $dpDate->year,
-                'period_month'     => $dpDate->month,
-                'status'           => 'posted',
-                'created_by'       => Auth::id() ?? $project->created_by,
-                'posted_by'        => Auth::id() ?? $project->created_by,
-                'posted_at'        => now(),
-                'total_amount'     => $amount,
-            ]);
+            // BUG-09: Lock project + re-hitung validasi setelah lock.
+            // Cegah 2 request terimaDP() bareng yang lolos validasi awal
+            // tapi bikin total DP > nilai kontrak.
+            $lockedProject = Project::withoutGlobalScopes()
+                ->where('id', $project->id)
+                ->lockForUpdate()
+                ->first();
 
-            // Dr Kas/Bank
-            JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $cashAccount->id,
-                'description'      => 'Terima DP ' . $project->project_number,
-                'debit'            => $amount,
-                'kredit'           => 0,
-                'sort_order'       => 1,
-            ]);
+            if (! $lockedProject) {
+                throw ValidationException::withMessages([
+                    'project' => "Proyek tidak ditemukan (id: {$project->id}).",
+                ]);
+            }
 
-            // Cr Uang Muka Proyek (kewajiban)
-            JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $uangMuka->id,
-                'description'      => 'Uang muka diterima dari ' . optional($project->client)->name,
-                'debit'            => 0,
-                'kredit'           => $amount,
-                'sort_order'       => 2,
-            ]);
+            $tertagihNilaiLocked = round((float) $lockedProject->nilai_kontrak * (float) $lockedProject->tertagih_pct / 100, 2);
+            $sisaNilaiLocked = round((float) $lockedProject->nilai_kontrak - $tertagihNilaiLocked - (float) $lockedProject->dp_diterima, 2);
 
-            // Update DP counter di proyek
-            $project->update([
-                'dp_diterima' => (float) $project->dp_diterima + $amount,
-            ]);
+            if (round($amount, 2) > $sisaNilaiLocked) {
+                throw ValidationException::withMessages([
+                    'amount' => sprintf(
+                        'DP Rp %s melebihi sisa nilai kontrak (Rp %s) setelah cek concurrent.',
+                        number_format($amount, 0, ',', '.'),
+                        number_format(max(0, $sisaNilaiLocked), 0, ',', '.'),
+                    ),
+                ]);
+            }
+
+            $project = $lockedProject; // Ganti reference ke locked version
+
+            // BUG-11: Refactor pakai createEntryWithLines
+            $journal = $this->journalService->createEntryWithLines(
+                company:          $company,
+                date:             $dpDate,
+                entryDataFactory: fn (string $entryNumber): array => [
+                    'company_id'       => $project->company_id,
+                    'entry_number'     => $entryNumber,
+                    'entry_date'       => $dpDate,
+                    'document_number'  => 'DP-' . $project->project_number,
+                    'document_type'    => 'bkm',
+                    'business_unit_id' => optional($bongUnit)->id,
+                    'description'      => 'Uang muka proyek ' . $project->project_number
+                        . ' — ' . $project->name
+                        . ($notes ? ' — ' . $notes : ''),
+                    'period_year'      => $dpDate->year,
+                    'period_month'     => $dpDate->month,
+                    'status'           => 'posted',
+                    'created_by'       => Auth::id() ?? $project->created_by,
+                    'posted_by'        => Auth::id() ?? $project->created_by,
+                    'posted_at'        => now(),
+                    'total_amount'     => $amount,
+                ],
+                linesFactory:     fn (JournalEntry $entry): array => [
+                    [
+                        'account_id'  => $cashAccount->id,
+                        'description' => 'Terima DP ' . $project->project_number,
+                        'debit'       => $amount,
+                        'kredit'      => 0,
+                    ],
+                    [
+                        'account_id'  => $uangMuka->id,
+                        'description' => 'Uang muka diterima dari ' . optional($project->client)->name,
+                        'debit'       => 0,
+                        'kredit'      => $amount,
+                    ],
+                ],
+            );
+
+            // BUG-09: Atomic increment (bukan read-modify-write).
+            // MySQL: SET dp_diterima = dp_diterima + $amount — race-safe.
+            Project::withoutGlobalScopes()
+                ->where('id', $project->id)
+                ->increment('dp_diterima', $amount);
 
             return $journal;
         });
@@ -285,12 +329,30 @@ class ProjectService
             ->where('code', 'BONG')
             ->first();
 
-        $nextTerminNumber = (int) ($project->termins()->max('termin_number') ?? 0) + 1;
-
         return DB::transaction(function () use (
-            $project, $terminPct, $amount, $invDate, $description,
-            $bongUnit, $nextTerminNumber
+            $project, $terminPct, $amount, $invDate, $description, $bongUnit
         ) {
+            // BUG-10: Lock project + re-hitung nextTerminNumber di dalam tx.
+            // Cegah 2 concurrent tagih dapat termin_number sama.
+            // Unique constraint (project_id, termin_number) sebagai safeguard database.
+            $lockedProject = Project::withoutGlobalScopes()
+                ->where('id', $project->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedProject) {
+                throw ValidationException::withMessages([
+                    'project' => "Proyek tidak ditemukan (id: {$project->id}).",
+                ]);
+            }
+
+            // Ambil max termin_number setelah lock — safe dari race
+            $nextTerminNumber = (int) (ProjectTermin::withoutGlobalScopes()
+                ->where('project_id', $project->id)
+                ->max('termin_number') ?? 0) + 1;
+
+            $project = $lockedProject; // Ganti reference ke locked version
+
             // 1. Bikin invoice draft
             $invoice = Invoice::create([
                 'company_id'       => $project->company_id,
@@ -330,10 +392,10 @@ class ProjectService
                 'created_by'    => Auth::id() ?? $project->created_by,
             ]);
 
-            // 4. Update project tertagih_pct
-            $project->update([
-                'tertagih_pct' => round((float) $project->tertagih_pct + $terminPct, 2),
-            ]);
+            // 4. BUG-09: Atomic increment tertagih_pct
+            Project::withoutGlobalScopes()
+                ->where('id', $project->id)
+                ->increment('tertagih_pct', $terminPct);
 
             return $invoice;
         });

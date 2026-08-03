@@ -47,30 +47,36 @@ class InvoiceObserver
 
     private function rollbackArmada(Invoice $invoice): void
     {
-        $contract = ArmadaContract::withoutGlobalScopes()->find($invoice->source_id);
+        // BUG-23: lockForUpdate cegah race saat void concurrent
+        $contract = ArmadaContract::withoutGlobalScopes()
+            ->where('id', $invoice->source_id)
+            ->lockForUpdate()
+            ->first();
         if (! $contract) return;
 
-        // Hitung total rit yang ter-link ke invoice ini
         $unbilledBackCount = (int) RitLog::withoutGlobalScopes()
             ->where('invoice_id', $invoice->id)
             ->sum('rit_count');
 
         if ($unbilledBackCount > 0) {
-            // Lepas link rit_logs
             RitLog::withoutGlobalScopes()
                 ->where('invoice_id', $invoice->id)
                 ->update(['invoice_id' => null]);
 
-            // Kurangi billed_rit counter
-            $contract->update([
-                'billed_rit' => max(0, (int) $contract->billed_rit - $unbilledBackCount),
-            ]);
+            // Atomic decrement (bukan read-modify-write)
+            ArmadaContract::withoutGlobalScopes()
+                ->where('id', $contract->id)
+                ->decrement('billed_rit', $unbilledBackCount);
         }
     }
 
     private function rollbackRental(Invoice $invoice): void
     {
-        $contract = RentalContract::withoutGlobalScopes()->find($invoice->source_id);
+        // BUG-23: lockForUpdate cegah race
+        $contract = RentalContract::withoutGlobalScopes()
+            ->where('id', $invoice->source_id)
+            ->lockForUpdate()
+            ->first();
         if (! $contract) return;
 
         $unbilledBackJam = (float) RentalLog::withoutGlobalScopes()
@@ -82,9 +88,9 @@ class InvoiceObserver
                 ->where('invoice_id', $invoice->id)
                 ->update(['invoice_id' => null]);
 
-            $contract->update([
-                'billed_jam' => max(0, round((float) $contract->billed_jam - $unbilledBackJam, 2)),
-            ]);
+            RentalContract::withoutGlobalScopes()
+                ->where('id', $contract->id)
+                ->decrement('billed_jam', $unbilledBackJam);
         }
     }
 
@@ -96,14 +102,23 @@ class InvoiceObserver
 
         if (! $termin) return;
 
-        $project = Project::withoutGlobalScopes()->find($termin->project_id);
+        // BUG-23: lockForUpdate
+        $project = Project::withoutGlobalScopes()
+            ->where('id', $termin->project_id)
+            ->lockForUpdate()
+            ->first();
         if ($project) {
+            $newTertagih = max(0, round((float) $project->tertagih_pct - (float) $termin->termin_pct, 2));
+            // BUG-24: reopen ke 'berjalan' kalau tertagih_pct < 100
+            // (tidak peduli progress_pct — kalau sudah selesai tapi tertagih
+            // turun, user perlu bisa tagih ulang termin baru).
+            $newStatus = ($project->status === 'selesai' && $newTertagih < 100 - 0.005)
+                ? 'berjalan'
+                : $project->status;
+
             $project->update([
-                'tertagih_pct' => max(0, round((float) $project->tertagih_pct - (float) $termin->termin_pct, 2)),
-                // Buka kembali status jika sempat 'selesai'
-                'status'       => $project->status === 'selesai' && $project->progress_pct < 100
-                    ? 'berjalan'
-                    : $project->status,
+                'tertagih_pct' => $newTertagih,
+                'status'       => $newStatus,
             ]);
         }
 

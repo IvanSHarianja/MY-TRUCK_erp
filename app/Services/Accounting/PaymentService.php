@@ -62,26 +62,9 @@ class PaymentService
         ?string $referenceNumber = null,
         ?string $description = null,
     ): Payment {
-        if (! $invoice->canReceivePayment()) {
-            throw ValidationException::withMessages([
-                'invoice' => "Invoice {$invoice->invoice_number} tidak bisa menerima pembayaran (status: {$invoice->status}).",
-            ]);
-        }
-
         if ($amount <= 0) {
             throw ValidationException::withMessages([
                 'amount' => 'Nominal pembayaran harus lebih dari 0.',
-            ]);
-        }
-
-        $sisa = (float) $invoice->amount - (float) $invoice->paid_amount;
-        if (round($amount, 2) > round($sisa, 2)) {
-            throw ValidationException::withMessages([
-                'amount' => sprintf(
-                    'Nominal pembayaran (Rp %s) melebihi sisa piutang (Rp %s).',
-                    number_format($amount, 0, ',', '.'),
-                    number_format($sisa, 0, ',', '.'),
-                ),
             ]);
         }
 
@@ -103,46 +86,79 @@ class PaymentService
             $invoice, $cashAccount, $amount, $payDate, $referenceNumber,
             $description, $company, $receivable
         ) {
+            // 2 request pay() bareng: sebelumnya keduanya baca paid_amount sama,
+            // both write. Sekarang MySQL block request kedua sampai commit pertama.
+            $lockedInvoice = Invoice::withoutGlobalScopes()
+                ->where('id', $invoice->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedInvoice) {
+                throw ValidationException::withMessages([
+                    'invoice' => "Invoice tidak ditemukan (id: {$invoice->id}).",
+                ]);
+            }
+
+            // Re-check status setelah lock — nilai bisa berubah di antara read awal
+            // dan sekarang (mis. user lain sudah lunasi invoice ini).
+            if (! $lockedInvoice->canReceivePayment()) {
+                throw ValidationException::withMessages([
+                    'invoice' => "Invoice {$lockedInvoice->invoice_number} tidak bisa menerima pembayaran (status: {$lockedInvoice->status}).",
+                ]);
+            }
+
+            $sisa = (float) $lockedInvoice->amount - (float) $lockedInvoice->paid_amount;
+            if (round($amount, 2) > round($sisa, 2)) {
+                throw ValidationException::withMessages([
+                    'amount' => sprintf(
+                        'Nominal pembayaran (Rp %s) melebihi sisa piutang (Rp %s).',
+                        number_format($amount, 0, ',', '.'),
+                        number_format($sisa, 0, ',', '.'),
+                    ),
+                ]);
+            }
+
+            $invoice = $lockedInvoice; // Ganti reference ke locked version
+
             $paymentNumber = $this->generatePaymentNumber($company, $payDate);
 
-            $journal = JournalEntry::create([
-                'company_id'       => $invoice->company_id,
-                'entry_number'     => $this->journalService->generateEntryNumber($company, $payDate),
-                'entry_date'       => $payDate,
-                'document_number'  => $paymentNumber,
-                'document_type'    => 'bkm',  // Bukti Kas Masuk
-                'business_unit_id' => $invoice->business_unit_id,
-                'description'      => 'Penerimaan pembayaran ' . $invoice->invoice_number
-                    . ' — ' . optional($invoice->client)->name
-                    . ($description ? ' — ' . $description : ''),
-                'period_year'      => $payDate->year,
-                'period_month'     => $payDate->month,
-                'status'           => 'posted',
-                'created_by'       => Auth::id() ?? $invoice->created_by,
-                'posted_by'        => Auth::id() ?? $invoice->created_by,
-                'posted_at'        => now(),
-                'total_amount'     => $amount,
-            ]);
-
-            // Dr Kas/Bank
-            JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $cashAccount->id,
-                'description'      => 'Penerimaan ' . $invoice->invoice_number,
-                'debit'            => $amount,
-                'kredit'           => 0,
-                'sort_order'       => 1,
-            ]);
-
-            // Cr Piutang Usaha
-            JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $receivable->id,
-                'description'      => 'Pelunasan piutang ' . optional($invoice->client)->name,
-                'debit'            => 0,
-                'kredit'           => $amount,
-                'sort_order'       => 2,
-            ]);
+            // BUG-11: Refactor pakai createEntryWithLines (race-safe entry_number)
+            $journal = $this->journalService->createEntryWithLines(
+                company:          $company,
+                date:             $payDate,
+                entryDataFactory: fn (string $entryNumber): array => [
+                    'company_id'       => $invoice->company_id,
+                    'entry_number'     => $entryNumber,
+                    'entry_date'       => $payDate,
+                    'document_number'  => $paymentNumber,
+                    'document_type'    => 'bkm',
+                    'business_unit_id' => $invoice->business_unit_id,
+                    'description'      => 'Penerimaan pembayaran ' . $invoice->invoice_number
+                        . ' — ' . optional($invoice->client)->name
+                        . ($description ? ' — ' . $description : ''),
+                    'period_year'      => $payDate->year,
+                    'period_month'     => $payDate->month,
+                    'status'           => 'posted',
+                    'created_by'       => Auth::id() ?? $invoice->created_by,
+                    'posted_by'        => Auth::id() ?? $invoice->created_by,
+                    'posted_at'        => now(),
+                    'total_amount'     => $amount,
+                ],
+                linesFactory:     fn (JournalEntry $entry): array => [
+                    [
+                        'account_id'  => $cashAccount->id,
+                        'description' => 'Penerimaan ' . $invoice->invoice_number,
+                        'debit'       => $amount,
+                        'kredit'      => 0,
+                    ],
+                    [
+                        'account_id'  => $receivable->id,
+                        'description' => 'Pelunasan piutang ' . optional($invoice->client)->name,
+                        'debit'       => 0,
+                        'kredit'      => $amount,
+                    ],
+                ],
+            );
 
             $payment = Payment::create([
                 'company_id'       => $invoice->company_id,
@@ -216,12 +232,17 @@ class PaymentService
 
             $invoice = $payment->invoice;
             $newPaid = max(0, (float) $invoice->paid_amount - (float) $payment->amount);
-            $newStatus = round($newPaid, 2) <= 0 ? 'terbit' : 'sebagian';
 
-            $invoice->update([
-                'paid_amount' => $newPaid,
-                'status'      => $newStatus,
-            ]);
+            // BUG-13: kalau invoice sudah VOID (mis. via journal admin cascade),
+            // JANGAN ubah status ke 'terbit'/'sebagian' — ini bikin zombie invoice
+            // yang secara akuntansi sudah dibatalkan tapi kelihatan aktif lagi.
+            // Cuma sinkronkan paid_amount saja.
+            $updates = ['paid_amount' => $newPaid];
+            if (! $invoice->isVoid()) {
+                $updates['status'] = round($newPaid, 2) <= 0 ? 'terbit' : 'sebagian';
+            }
+
+            $invoice->update($updates);
 
             $payment->delete();
         });

@@ -20,7 +20,8 @@ class EditRentalContract extends EditRecord
             $this->getCancelFormAction(),
 
             DeleteAction::make()
-                ->visible(fn (): bool => (float) $this->record->billed_jam === 0.0 && (float) $this->record->total_jam === 0.0),
+                // BUG-19: epsilon tolerance (bukan strict === 0.0)
+                ->visible(fn (): bool => abs((float) $this->record->billed_jam) < 0.005 && abs((float) $this->record->total_jam) < 0.005),
         ];
     }
 

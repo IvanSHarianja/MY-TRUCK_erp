@@ -137,9 +137,7 @@ class ProjectsTable
                             TextInput::make('amount')
                                 ->label('Nominal DP (Rp)')
                                 ->required()
-                                ->numeric()
-                                ->prefix('Rp')
-                                ->minValue(1)
+                                ->rupiah()
                                 ->maxValue(function (Project $r): float {
                                     $tertagihNilai = round((float) $r->nilai_kontrak * (float) $r->tertagih_pct / 100, 2);
                                     $sisa = (float) $r->nilai_kontrak - $tertagihNilai - (float) $r->dp_diterima;

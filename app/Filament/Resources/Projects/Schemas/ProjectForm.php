@@ -66,9 +66,7 @@ class ProjectForm
                         TextInput::make('nilai_kontrak')
                             ->label('Nilai Kontrak (Rp)')
                             ->required()
-                            ->numeric()
-                            ->prefix('Rp')
-                            ->minValue(1)
+                            ->rupiah()
                             ->placeholder('contoh: 1850000000'),
 
                         DatePicker::make('started_at')

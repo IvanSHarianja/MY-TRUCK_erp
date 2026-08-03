@@ -127,12 +127,6 @@ class InvoiceService
      */
     public function issue(Invoice $invoice): Invoice
     {
-        if (! $invoice->isDraft()) {
-            throw ValidationException::withMessages([
-                'status' => "Hanya invoice DRAFT yang bisa diterbitkan (status sekarang: {$invoice->status}).",
-            ]);
-        }
-
         if ((float) $invoice->amount <= 0) {
             throw ValidationException::withMessages([
                 'amount' => 'Nominal invoice harus lebih dari 0.',
@@ -156,50 +150,73 @@ class InvoiceService
         $revenueAssetId = $this->resolveRevenueAssetId($invoice);
 
         return DB::transaction(function () use ($invoice, $revenue, $receivable, $company, $invDate, $revenueAssetId) {
-            $journal = JournalEntry::create([
-                'company_id'       => $invoice->company_id,
-                'entry_number'     => $this->journalService->generateEntryNumber($company, $invDate),
-                'entry_date'       => $invDate,
-                'document_number'  => $invoice->invoice_number,
-                'document_type'    => 'invoice',
-                'business_unit_id' => $invoice->business_unit_id,
-                'description'      => 'Invoice ' . $invoice->invoice_number
-                    . ' — ' . optional($invoice->client)->name
-                    . ($invoice->description ? ' — ' . $invoice->description : ''),
-                'period_year'      => $invDate->year,
-                'period_month'     => $invDate->month,
-                'status'           => 'posted',
-                'created_by'       => Auth::id() ?? $invoice->created_by,
-                'posted_by'        => Auth::id() ?? $invoice->created_by,
-                'posted_at'        => now(),
-                'total_amount'     => $invoice->amount,
-            ]);
+            // BUG-15: Lock invoice row + re-check isDraft. Cegah 2 request issue()
+            // bareng yang keduanya lolos check di luar tx → double jurnal.
+            $lockedInvoice = Invoice::withoutGlobalScopes()
+                ->where('id', $invoice->id)
+                ->lockForUpdate()
+                ->first();
 
-            // Dr Piutang Usaha (tidak di-tag asset — piutang bukan revenue/cost line)
-            JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $receivable->id,
-                'description'      => 'Piutang dari ' . optional($invoice->client)->name,
-                'debit'            => $invoice->amount,
-                'kredit'           => 0,
-                'sort_order'       => 1,
-            ]);
+            if (! $lockedInvoice) {
+                throw ValidationException::withMessages([
+                    'invoice' => "Invoice tidak ditemukan (id: {$invoice->id}).",
+                ]);
+            }
 
-            // Cr Pendapatan — di-tag asset_id kalau resolvable (untuk P&L per unit)
-            JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $revenue->id,
-                'asset_id'         => $revenueAssetId,
-                'description'      => 'Pendapatan dari invoice ' . $invoice->invoice_number,
-                'debit'            => 0,
-                'kredit'           => $invoice->amount,
-                'sort_order'       => 2,
-            ]);
+            if (! $lockedInvoice->isDraft()) {
+                throw ValidationException::withMessages([
+                    'status' => "Hanya invoice DRAFT yang bisa diterbitkan (status sekarang: {$lockedInvoice->status}).",
+                ]);
+            }
 
-            // Re-generate invoice_number kalau masih DRAFT-* placeholder
+            $invoice = $lockedInvoice; // Ganti reference ke locked version
+
+            // BUG-11: Refactor pakai createEntryWithLines yang sudah race-safe
+            // (retry pada UniqueConstraintViolationException entry_number).
+            $journal = $this->journalService->createEntryWithLines(
+                company:          $company,
+                date:             $invDate,
+                entryDataFactory: fn (string $entryNumber): array => [
+                    'company_id'       => $invoice->company_id,
+                    'entry_number'     => $entryNumber,
+                    'entry_date'       => $invDate,
+                    'document_number'  => $invoice->invoice_number,
+                    'document_type'    => 'invoice',
+                    'business_unit_id' => $invoice->business_unit_id,
+                    'description'      => 'Invoice ' . $invoice->invoice_number
+                        . ' — ' . optional($invoice->client)->name
+                        . ($invoice->description ? ' — ' . $invoice->description : ''),
+                    'period_year'      => $invDate->year,
+                    'period_month'     => $invDate->month,
+                    'status'           => 'posted',
+                    'created_by'       => Auth::id() ?? $invoice->created_by,
+                    'posted_by'        => Auth::id() ?? $invoice->created_by,
+                    'posted_at'        => now(),
+                    'total_amount'     => $invoice->amount,
+                ],
+                linesFactory:     fn (JournalEntry $entry): array => [
+                    [
+                        'account_id'  => $receivable->id,
+                        'description' => 'Piutang dari ' . optional($invoice->client)->name,
+                        'debit'       => $invoice->amount,
+                        'kredit'      => 0,
+                    ],
+                    [
+                        'account_id'  => $revenue->id,
+                        'asset_id'    => $revenueAssetId,
+                        'description' => 'Pendapatan dari invoice ' . $invoice->invoice_number,
+                        'debit'       => 0,
+                        'kredit'      => $invoice->amount,
+                    ],
+                ],
+            );
+
+            // BUG-12: Re-generate invoice_number kalau masih DRAFT-* placeholder,
+            // dengan retry loop untuk race concurrent (2 draft di bulan sama
+            // di-issue bareng → same next number → unique violation).
             $invoiceNumber = $invoice->invoice_number;
             if (str_starts_with((string) $invoiceNumber, 'DRAFT-')) {
-                $invoiceNumber = $this->generateInvoiceNumber($company, $invDate);
+                $invoiceNumber = $this->assignUniqueInvoiceNumber($invoice, $company, $invDate);
                 $journal->update(['document_number' => $invoiceNumber]);
             }
 
@@ -238,14 +255,19 @@ class InvoiceService
         }
 
         if ($invoice->source_type === 'rental_contract') {
-            $contract = \App\Models\RentalContract::withoutGlobalScopes()->find($invoice->source_id);
+            // BUG-35: explicit company scope (defense-in-depth)
+            $contract = \App\Models\RentalContract::withoutGlobalScopes()
+                ->where('company_id', $invoice->company_id)
+                ->find($invoice->source_id);
             return $contract?->asset_id;
         }
 
         if ($invoice->source_type === 'armada_contract') {
             // Cari distinct asset_id dari rit_logs yang sudah di-link ke invoice ini.
             // Kalau hanya 1 asset unique → tag itu. Kalau lebih → NULL (mixed).
+            // BUG-35: explicit company scope
             $assetIds = \App\Models\RitLog::withoutGlobalScopes()
+                ->where('company_id', $invoice->company_id)
                 ->where('invoice_id', $invoice->id)
                 ->distinct()
                 ->pluck('asset_id')
@@ -275,6 +297,41 @@ class InvoiceService
             // Log error tapi jangan rollback invoice
             Log::warning('Gagal kirim email invoice ' . $invoice->invoice_number . ': ' . $e->getMessage());
         }
+    }
+
+    /**
+     * BUG-12: Assign invoice_number dengan retry-on-collision.
+     *
+     * Race scenario: 2 draft invoice (dari 2 kontrak berbeda) di-issue bareng
+     * di bulan sama → generateInvoiceNumber() dua-duanya dapat INVYYYYMM-NNNN
+     * yang sama → unique constraint violation saat update.
+     *
+     * Fix: catch UniqueConstraintViolationException, regenerate nomor
+     * (yang sekarang akan dapat +1 dari yang barusan commit).
+     */
+    private function assignUniqueInvoiceNumber(
+        Invoice $invoice,
+        Company $company,
+        CarbonInterface $date,
+        int $maxAttempts = 5,
+    ): string {
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+            try {
+                $number = $this->generateInvoiceNumber($company, $date);
+                $invoice->update(['invoice_number' => $number]);
+                return $number;
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                $lastException = $e;
+                // Exponential backoff + jitter
+                usleep(random_int(10_000 * (2 ** ($attempt - 1)), 10_000 * (2 ** $attempt) + 40_000));
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException(
+            "Gagal generate invoice_number unik setelah {$maxAttempts} percobaan."
+        );
     }
 
     /**

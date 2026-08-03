@@ -73,7 +73,8 @@ class JournalService
             $totalKredit += $kredit;
         }
 
-        if (round($totalDebit, 2) !== round($totalKredit, 2)) {
+        // BUG-17: epsilon tolerance (bukan strict !==)
+        if (abs($totalDebit - $totalKredit) > 0.005) {
             throw ValidationException::withMessages([
                 'lines' => sprintf(
                     'Jurnal tidak balance! Debit Rp %s ≠ Kredit Rp %s (selisih Rp %s).',
@@ -174,49 +175,56 @@ class JournalService
      */
     public function void(JournalEntry $entry, ?string $reason = null): JournalEntry
     {
-        if (! $entry->isPosted()) {
-            throw ValidationException::withMessages([
-                'status' => "Hanya jurnal status POSTED yang bisa di-void (status sekarang: {$entry->status}).",
-            ]);
-        }
-
         $entry->loadMissing('lines');
 
         return DB::transaction(function () use ($entry, $reason) {
-            $reverseDate = Carbon::today();
+            // BUG-25: Lock + re-check di dalam tx. Cegah 2 void concurrent
+            // yang keduanya bikin jurnal pembalik untuk entry sama.
+            $locked = JournalEntry::withoutGlobalScopes()
+                ->where('id', $entry->id)
+                ->lockForUpdate()
+                ->first();
 
-            $reverse = JournalEntry::create([
-                'company_id'       => $entry->company_id,
-                'entry_number'     => $this->generateEntryNumber(
-                    Company::findOrFail($entry->company_id),
-                    $reverseDate,
-                ),
-                'entry_date'       => $reverseDate,
-                'document_number'  => 'REV-' . $entry->entry_number,
-                'document_type'    => 'pembalik',
-                'business_unit_id' => $entry->business_unit_id,
-                'description'      => 'Jurnal pembalik untuk ' . $entry->entry_number
-                    . ($reason ? '. Alasan: ' . $reason : ''),
-                'period_year'      => $reverseDate->year,
-                'period_month'     => $reverseDate->month,
-                'status'           => 'posted',
-                'created_by'       => Auth::id() ?? $entry->created_by,
-                'posted_by'        => Auth::id() ?? $entry->created_by,
-                'posted_at'        => now(),
-                'total_amount'     => $entry->total_amount,
-            ]);
-
-            // Balik debit/kredit
-            foreach ($entry->lines as $line) {
-                JournalEntryLine::create([
-                    'journal_entry_id' => $reverse->id,
-                    'account_id'       => $line->account_id,
-                    'description'      => 'Pembalik: ' . ($line->description ?? ''),
-                    'debit'            => $line->kredit,
-                    'kredit'           => $line->debit,
-                    'sort_order'       => $line->sort_order,
+            if (! $locked || ! $locked->isPosted()) {
+                throw ValidationException::withMessages([
+                    'status' => "Hanya jurnal status POSTED yang bisa di-void (status sekarang: {$locked?->status}).",
                 ]);
             }
+
+            $reverseDate = Carbon::today();
+            $company = Company::findOrFail($entry->company_id);
+
+            // BUG-22: cek periode pembalik belum tutup buku
+            $this->assertPeriodOpen($company, $reverseDate->year, $reverseDate->month);
+
+            // BUG-11: Refactor pakai createEntryWithLines (race-safe entry_number)
+            $reverse = $this->createEntryWithLines(
+                company:          $company,
+                date:             $reverseDate,
+                entryDataFactory: fn (string $entryNumber): array => [
+                    'company_id'       => $entry->company_id,
+                    'entry_number'     => $entryNumber,
+                    'entry_date'       => $reverseDate,
+                    'document_number'  => 'REV-' . $entry->entry_number,
+                    'document_type'    => 'pembalik',
+                    'business_unit_id' => $entry->business_unit_id,
+                    'description'      => 'Jurnal pembalik untuk ' . $entry->entry_number
+                        . ($reason ? '. Alasan: ' . $reason : ''),
+                    'period_year'      => $reverseDate->year,
+                    'period_month'     => $reverseDate->month,
+                    'status'           => 'posted',
+                    'created_by'       => Auth::id() ?? $entry->created_by,
+                    'posted_by'        => Auth::id() ?? $entry->created_by,
+                    'posted_at'        => now(),
+                    'total_amount'     => $entry->total_amount,
+                ],
+                linesFactory:     fn (JournalEntry $rev): array => $entry->lines->map(fn ($line) => [
+                    'account_id'  => $line->account_id,
+                    'description' => 'Pembalik: ' . ($line->description ?? ''),
+                    'debit'       => $line->kredit,
+                    'kredit'      => $line->debit,
+                ])->toArray(),
+            );
 
             $entry->update([
                 'status'         => 'void',

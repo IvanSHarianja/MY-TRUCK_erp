@@ -164,10 +164,13 @@ class DepreciationService
 
         $documentNumber = sprintf('DEP-%d-%04d%02d', $asset->id, $targetDate->year, $targetDate->month);
 
-        DB::transaction(function () use ($asset, $company, $targetDate, $monthly, $accBeban, $accAkumulasi, $bu, $documentNumber) {
-            $journal = JournalEntry::create([
+        // BUG-11: Refactor pakai createEntryWithLines (race-safe entry_number)
+        $this->journalService->createEntryWithLines(
+            company:          $company,
+            date:             $targetDate,
+            entryDataFactory: fn (string $entryNumber): array => [
                 'company_id'       => $company->id,
-                'entry_number'     => $this->journalService->generateEntryNumber($company, $targetDate),
+                'entry_number'     => $entryNumber,
                 'entry_date'       => $targetDate,
                 'document_number'  => $documentNumber,
                 'document_type'    => 'penyusutan',
@@ -181,28 +184,24 @@ class DepreciationService
                 'posted_by'        => Auth::id() ?? 1,
                 'posted_at'        => now(),
                 'total_amount'     => $monthly,
-            ]);
-
-            \App\Models\JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $accBeban->id,
-                'asset_id'         => $asset->id,     // cost tag untuk P&L per unit
-                'description'      => '[' . $asset->asset_code . '] Beban penyusutan bulanan',
-                'debit'            => $monthly,
-                'kredit'           => 0,
-                'sort_order'       => 1,
-            ]);
-
-            \App\Models\JournalEntryLine::create([
-                'journal_entry_id' => $journal->id,
-                'account_id'       => $accAkumulasi->id,
-                'asset_id'         => $asset->id,     // tag juga di akumulasi biar audit trail per aset
-                'description'      => '[' . $asset->asset_code . '] Akumulasi penyusutan',
-                'debit'            => 0,
-                'kredit'           => $monthly,
-                'sort_order'       => 2,
-            ]);
-        });
+            ],
+            linesFactory:     fn (JournalEntry $entry): array => [
+                [
+                    'account_id'  => $accBeban->id,
+                    'asset_id'    => $asset->id,
+                    'description' => '[' . $asset->asset_code . '] Beban penyusutan bulanan',
+                    'debit'       => $monthly,
+                    'kredit'      => 0,
+                ],
+                [
+                    'account_id'  => $accAkumulasi->id,
+                    'asset_id'    => $asset->id,
+                    'description' => '[' . $asset->asset_code . '] Akumulasi penyusutan',
+                    'debit'       => 0,
+                    'kredit'      => $monthly,
+                ],
+            ],
+        );
 
         return true;
     }
@@ -236,8 +235,9 @@ class DepreciationService
             return [false, "Belum eligible: pembelian {$purchaseDate->format('Y-m')}, depresiasi mulai {$firstDepreciationMonth->format('Y-m')}"];
         }
 
-        // Hitung berapa bulan sudah lewat sejak first depreciation
-        $monthsElapsed = $firstDepreciationMonth->diffInMonths($targetMonth) + 1;
+        // BUG-30: Carbon 3 diffInMonths return float. Round untuk hindari
+        // off-by-1 di boundary bulan karena timezone/DST drift.
+        $monthsElapsed = (int) round($firstDepreciationMonth->diffInMonths($targetMonth)) + 1;
         if ($monthsElapsed > (int) $asset->useful_life_months) {
             return [false, "Fully depreciated (umur ekonomis {$asset->useful_life_months} bulan sudah habis)"];
         }

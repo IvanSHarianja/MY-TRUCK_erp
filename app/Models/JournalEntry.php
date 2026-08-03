@@ -92,6 +92,7 @@ class JournalEntry extends Model
 
     public function isBalanced(): bool
     {
-        return round($this->total_debit, 2) === round($this->total_kredit, 2);
+        // BUG-18: epsilon tolerance untuk hindari float drift residu
+        return abs($this->total_debit - $this->total_kredit) < 0.005;
     }
 }

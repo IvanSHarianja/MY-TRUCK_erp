@@ -73,10 +73,8 @@ class MaintenanceLogsRelationManager extends RelationManager
                 TextInput::make('cost')
                     ->label('Biaya Total')
                     ->required()
-                    ->numeric()
-                    ->minValue(0)
-                    ->prefix('Rp')
                     ->default(0)
+                    ->rupiah()
                     ->helperText('Isi 0 untuk service gratis / garansi — jurnal tidak akan dibuat.'),
 
                 TextInput::make('hm_saat_service')

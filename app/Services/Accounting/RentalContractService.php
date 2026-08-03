@@ -51,19 +51,6 @@ class RentalContractService
 
         $contract->load(['client', 'asset']);
 
-        $unbilledLogs = $contract->rentalLogs()
-            ->whereNull('invoice_id')
-            ->get();
-
-        $totalUnbilledJam = round((float) $unbilledLogs->sum('jam_kerja'), 2);
-
-        if ($totalUnbilledJam <= 0) {
-            throw ValidationException::withMessages([
-                'jam' => "Tidak ada jam kerja belum ditagih di kontrak {$contract->contract_number}.",
-            ]);
-        }
-
-        $amount = round($totalUnbilledJam * (float) $contract->tarif_per_jam, 2);
         $invDate = $invoiceDate ? Carbon::parse($invoiceDate) : Carbon::today();
         $company = Company::findOrFail($contract->company_id);
 
@@ -74,8 +61,43 @@ class RentalContractService
             ->first();
 
         return DB::transaction(function () use (
-            $contract, $unbilledLogs, $totalUnbilledJam, $amount, $invDate, $rentUnit
+            $contract, $invDate, $rentUnit
         ) {
+            // BUG-05: Lock contract + query unbilledLogs di DALAM transaction.
+            // Sebelumnya: 2 request tagih() bareng → keduanya baca unbilledLogs
+            // sama → keduanya bikin invoice → billed_jam double increment.
+            // Sekarang: lock contract row + re-query dengan lockForUpdate
+            // → request kedua block sampai commit pertama selesai.
+            $lockedContract = \App\Models\RentalContract::withoutGlobalScopes()
+                ->where('id', $contract->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedContract || ! $lockedContract->isAktif()) {
+                throw ValidationException::withMessages([
+                    'status' => "Kontrak {$contract->contract_number} tidak bisa ditagih setelah cek concurrent.",
+                ]);
+            }
+
+            // Re-query unbilled_logs dengan lock — cegah race dua request
+            // baca log yang sama & bikin 2 invoice.
+            $unbilledLogs = \App\Models\RentalLog::withoutGlobalScopes()
+                ->where('rental_contract_id', $contract->id)
+                ->whereNull('invoice_id')
+                ->lockForUpdate()
+                ->get();
+
+            $totalUnbilledJam = round((float) $unbilledLogs->sum('jam_kerja'), 2);
+
+            if ($totalUnbilledJam <= 0) {
+                throw ValidationException::withMessages([
+                    'jam' => "Tidak ada jam kerja belum ditagih di kontrak {$contract->contract_number}.",
+                ]);
+            }
+
+            $amount = round($totalUnbilledJam * (float) $lockedContract->tarif_per_jam, 2);
+            $contract = $lockedContract; // Ganti reference
+
             $invoice = Invoice::create([
                 'company_id'       => $contract->company_id,
                 'invoice_number'   => 'DRAFT-' . now()->format('ymdHisu'),
@@ -98,17 +120,18 @@ class RentalContractService
                 'created_by'       => Auth::id() ?? $contract->created_by,
             ]);
 
-            $invoice = $this->invoiceService->issue($invoice);
-
-            // Link rental_logs ke invoice
+            // GAP-09: link logs DULU sebelum issue (konsisten dengan ArmadaContractService).
+            // Alasan sama: resolveRevenueAssetId perlu link logs untuk cari asset_id.
             $unbilledLogs->each(function ($log) use ($invoice) {
                 $log->update(['invoice_id' => $invoice->id]);
             });
 
-            // Update billed_jam counter
-            $contract->update([
-                'billed_jam' => round((float) $contract->billed_jam + $totalUnbilledJam, 2),
-            ]);
+            $invoice = $this->invoiceService->issue($invoice);
+
+            // BUG-05: Atomic increment (bukan read-modify-write)
+            \App\Models\RentalContract::withoutGlobalScopes()
+                ->where('id', $contract->id)
+                ->increment('billed_jam', $totalUnbilledJam);
 
             return $invoice;
         });

@@ -63,6 +63,15 @@ class RentalLogsRelationManager extends RelationManager
                     ->step(0.1)
                     ->placeholder('contoh: 4864.0')
                     ->live(onBlur: true)
+                    // BUG-34: recalc jam_kerja saat hm_awal berubah juga
+                    // (sebelumnya cuma di hm_akhir).
+                    ->afterStateUpdated(function ($state, Get $get, Set $set) {
+                        $awal = (float) ($state ?? 0);
+                        $akhir = (float) ($get('hm_akhir') ?? 0);
+                        if ($akhir > $awal) {
+                            $set('jam_kerja', round($akhir - $awal, 2));
+                        }
+                    })
                     ->columnSpan(1),
 
                 TextInput::make('hm_akhir')
@@ -136,16 +145,14 @@ class RentalLogsRelationManager extends RelationManager
 
                 TextInput::make('uang_makan_operator')
                     ->label('Uang Makan (override)')
-                    ->numeric()
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
                     ->live(onBlur: true)
                     ->columnSpan(1),
 
                 TextInput::make('premi_operator')
                     ->label('Premi (override)')
-                    ->numeric()
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
                     ->live(onBlur: true)
                     ->columnSpan(1),

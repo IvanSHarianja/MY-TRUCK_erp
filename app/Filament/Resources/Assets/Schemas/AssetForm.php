@@ -59,9 +59,8 @@ class AssetForm
 
                 TextInput::make('purchase_price')
                     ->label('Harga Beli')
-                    ->numeric()
                     ->default(0)
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->required(),
 
                 TextInput::make('useful_life_months')
@@ -73,9 +72,8 @@ class AssetForm
 
                 TextInput::make('salvage_value')
                     ->label('Nilai Residu')
-                    ->numeric()
                     ->default(0)
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->required(),
 
                 Select::make('account_id')

@@ -185,7 +185,8 @@ class JournalEntryForm
 
                                 $selisih = round($debit - $kredit, 2);
                                 $hasInput = ($debit > 0 || $kredit > 0);
-                                $balanced = $hasInput && $selisih === 0.0;
+                                // BUG-18: epsilon tolerance
+                                $balanced = $hasInput && abs($selisih) < 0.005;
 
                                 // Tiga state: empty (netral), balanced (hijau), unbalanced (merah)
                                 if (!$hasInput) {

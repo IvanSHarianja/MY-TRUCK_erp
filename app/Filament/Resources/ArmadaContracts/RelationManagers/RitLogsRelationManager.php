@@ -95,22 +95,19 @@ class RitLogsRelationManager extends RelationManager
 
                 TextInput::make('uang_jalan_supir')
                     ->label('Uang Jalan (override)')
-                    ->numeric()
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
                     ->live(onBlur: true),
 
                 TextInput::make('uang_makan_supir')
                     ->label('Uang Makan (override)')
-                    ->numeric()
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
                     ->live(onBlur: true),
 
                 TextInput::make('premi_supir')
                     ->label('Premi (override)')
-                    ->numeric()
-                    ->prefix('Rp')
+                    ->rupiah()
                     ->visible(fn (Get $get): bool => (bool) $get('override_biaya'))
                     ->live(onBlur: true)
                     ->columnSpanFull(),

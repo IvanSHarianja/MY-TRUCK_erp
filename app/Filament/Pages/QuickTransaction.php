@@ -196,11 +196,8 @@ class QuickTransaction extends Page implements HasForms, HasTable
 
                         TextInput::make('amount')
                             ->label('Nominal (Rp)')
-                            ->numeric()
                             ->required()
-                            ->minValue(1)
-                            ->step(1)
-                            ->prefix('Rp'),
+                            ->rupiah(),
 
                         Textarea::make('description')
                             ->label('Keterangan')

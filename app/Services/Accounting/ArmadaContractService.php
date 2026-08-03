@@ -59,20 +59,6 @@ class ArmadaContractService
 
         $contract->load('client');
 
-        // Ambil rit_logs yang belum ditagih
-        $unbilledLogs = $contract->ritLogs()
-            ->whereNull('invoice_id')
-            ->get();
-
-        $totalUnbilledRit = (int) $unbilledLogs->sum('rit_count');
-
-        if ($totalUnbilledRit <= 0) {
-            throw ValidationException::withMessages([
-                'rit' => "Tidak ada rit yang belum ditagih di kontrak {$contract->contract_number}.",
-            ]);
-        }
-
-        $amount = $totalUnbilledRit * (float) $contract->tarif_per_rit;
         $invDate = $invoiceDate ? Carbon::parse($invoiceDate) : Carbon::today();
         $company = Company::findOrFail($contract->company_id);
 
@@ -83,8 +69,39 @@ class ArmadaContractService
             ->first();
 
         return DB::transaction(function () use (
-            $contract, $unbilledLogs, $totalUnbilledRit, $amount, $invDate, $armdUnit
+            $contract, $invDate, $armdUnit
         ) {
+            // BUG-06: Lock contract + query unbilled_rit_logs di DALAM transaction.
+            // Sama pattern dengan BUG-05 (Rental) — cegah 2 request tagih() bareng
+            // yang bikin duplicate invoice + double increment billed_rit.
+            $lockedContract = \App\Models\ArmadaContract::withoutGlobalScopes()
+                ->where('id', $contract->id)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $lockedContract || ! $lockedContract->isAktif()) {
+                throw ValidationException::withMessages([
+                    'status' => "Kontrak {$contract->contract_number} tidak bisa ditagih setelah cek concurrent.",
+                ]);
+            }
+
+            $unbilledLogs = \App\Models\RitLog::withoutGlobalScopes()
+                ->where('armada_contract_id', $contract->id)
+                ->whereNull('invoice_id')
+                ->lockForUpdate()
+                ->get();
+
+            $totalUnbilledRit = (int) $unbilledLogs->sum('rit_count');
+
+            if ($totalUnbilledRit <= 0) {
+                throw ValidationException::withMessages([
+                    'rit' => "Tidak ada rit yang belum ditagih di kontrak {$contract->contract_number}.",
+                ]);
+            }
+
+            $amount = $totalUnbilledRit * (float) $lockedContract->tarif_per_rit;
+            $contract = $lockedContract; // Ganti reference
+
             // 1. Bikin invoice draft
             $invoice = Invoice::create([
                 'company_id'       => $contract->company_id,
@@ -121,10 +138,10 @@ class ArmadaContractService
             //    di-tag asset_id kalau semua rit pakai 1 aset yang sama).
             $invoice = $this->invoiceService->issue($invoice);
 
-            // 4. Update kontrak billed_rit
-            $contract->update([
-                'billed_rit' => (int) $contract->billed_rit + $totalUnbilledRit,
-            ]);
+            // 4. BUG-06: Atomic increment (bukan read-modify-write)
+            \App\Models\ArmadaContract::withoutGlobalScopes()
+                ->where('id', $contract->id)
+                ->increment('billed_rit', $totalUnbilledRit);
 
             return $invoice;
         });

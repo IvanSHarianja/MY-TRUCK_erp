@@ -78,7 +78,11 @@ class MaterialSaleForm
                             })
                             ->afterStateUpdated(function ($state, Set $set) {
                                 if ($state) {
-                                    $mat = Material::find($state);
+                                    // BUG-33: explicit tenant scope (defense-in-depth)
+                                    $tenant = Filament::getTenant();
+                                    $mat = Material::query()
+                                        ->when($tenant, fn ($q) => $q->where('company_id', $tenant->getKey()))
+                                        ->find($state);
                                     if ($mat) {
                                         $set('harga_satuan', (float) $mat->harga_per_satuan);
                                     }
@@ -93,16 +97,20 @@ class MaterialSaleForm
                             ->minValue(0.01)
                             ->step(0.01)
                             ->live(onBlur: true)
-                            ->suffix(fn (Get $get) => $get('material_id')
-                                ? optional(Material::find($get('material_id')))->satuan ?? 'unit'
-                                : 'unit'),
+                            ->suffix(function (Get $get) {
+                                if (! $get('material_id')) return 'unit';
+                                // BUG-33: explicit tenant scope
+                                $tenant = Filament::getTenant();
+                                $mat = Material::query()
+                                    ->when($tenant, fn ($q) => $q->where('company_id', $tenant->getKey()))
+                                    ->find($get('material_id'));
+                                return optional($mat)->satuan ?? 'unit';
+                            }),
 
                         TextInput::make('harga_satuan')
                             ->label('Harga per Satuan (Rp)')
                             ->required()
-                            ->numeric()
-                            ->prefix('Rp')
-                            ->minValue(0)
+                            ->rupiah()
                             ->live(onBlur: true)
                             ->helperText('Otomatis terisi dari master material, bisa di-override'),
 
