@@ -82,7 +82,7 @@ class AppServiceProvider extends ServiceProvider
                     optional(Filament::getTenant())?->id ?? 'shared',
                     now()->format('Y/m'),
                 ))
-                ->helperText('Foto struk/screenshot transfer. Auto-resize max 1920px, max 5MB.');
+                ->helperText('Foto struk/screenshot transfer. max 5MB.');
         });
     }
 }
