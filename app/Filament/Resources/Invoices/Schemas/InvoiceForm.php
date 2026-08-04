@@ -34,13 +34,13 @@ class InvoiceForm
 
                         DatePicker::make('due_date')
                             ->label('Jatuh Tempo')
-                            ->default(fn () => now()->addDays(30))
+                            ->default(fn() => now()->addDays(30))
                             ->native(false),
 
                         Select::make('client_id')
                             ->label('Pelanggan')
-                            ->relationship('client', 'name', fn ($query) => $query->where('is_active', true))
-                            ->getOptionLabelFromRecordUsing(fn ($record) => "[{$record->code}] {$record->name}")
+                            ->relationship('client', 'name', fn($query) => $query->where('is_active', true))
+                            ->getOptionLabelFromRecordUsing(fn($record) => "[{$record->code}] {$record->name}")
                             ->searchable()
                             ->preload()
                             ->required(),
@@ -48,10 +48,11 @@ class InvoiceForm
                         Select::make('business_unit_id')
                             ->label('Lini Bisnis')
                             ->relationship('businessUnit', 'name')
-                            ->getOptionLabelFromRecordUsing(fn ($record) => "[{$record->code}] {$record->name}")
+                            ->getOptionLabelFromRecordUsing(fn($record) => "[{$record->code}] {$record->name}")
                             ->searchable()
                             ->preload()
                             ->live()
+                            ->required()
                             ->helperText('Akun pendapatan otomatis di-set sesuai lini bisnis'),
 
                         Select::make('revenue_account_id')
@@ -62,7 +63,7 @@ class InvoiceForm
                                     ->where('is_active', true)
                                     ->where('category', 'pendapatan')
                                     ->postable();  // ← hanya leaf
-
+                    
                                 if ($tenant) {
                                     $query->where('company_id', $tenant->getKey());
                                 }
@@ -70,7 +71,7 @@ class InvoiceForm
                                 return $query
                                     ->orderBy('code')
                                     ->get()
-                                    ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])
+                                    ->mapWithKeys(fn($a) => [$a->id => "[{$a->code}] {$a->name}"])
                                     ->toArray();
                             })
                             ->searchable()
