@@ -183,6 +183,7 @@ class AccountForm
                         return AccountRole::applicableRolesForCategory($category);
                     })
                     ->searchable()
+                    ->required()
                     ->native(false)
                     ->live()
                     // Auto-override sub_category & cash_flow_category ke value tepat

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Assets\RelationManagers;
 use App\Enums\MaintenanceType;
 use App\Models\Vendor;
 use App\Services\Accounting\MaintenanceService;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -178,6 +179,8 @@ class MaintenanceLogsRelationManager extends RelationManager
                     }),
             ])
             ->recordActions([
+                Action::make('lihat_bukti')->liatBukti(),
+
                 EditAction::make(),
                 DeleteAction::make(),
             ]);

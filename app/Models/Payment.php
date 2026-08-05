@@ -39,7 +39,9 @@ class Payment extends Model
 
     protected $casts = [
         'payment_date' => 'date',
-        'amount'       => 'decimal:2',
+        // Integer cast (bukan decimal:2) — Rupiah UMKM tidak pakai sen.
+        // Cegah Filament mask $money salah baca titik decimal sebagai thousand.
+        'amount'       => 'integer',
     ];
 
     public function invoice(): BelongsTo

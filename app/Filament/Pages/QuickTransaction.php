@@ -381,6 +381,8 @@ class QuickTransaction extends Page implements HasForms, HasTable
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Tutup'),
 
+                Action::make('lihat_bukti')->liatBukti(),
+
                 Action::make('void')
                     ->label('Void')
                     ->icon(Heroicon::OutlinedArrowUturnLeft)

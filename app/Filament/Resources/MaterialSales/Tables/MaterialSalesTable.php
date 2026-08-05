@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MaterialSales\Tables;
 
+use Filament\Actions\Action;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -70,6 +71,9 @@ class MaterialSalesTable
                 SelectFilter::make('material_id')
                     ->label('Material')
                     ->relationship('material', 'name'),
+            ])
+            ->recordActions([
+                Action::make('lihat_bukti')->liatBukti(),
             ]);
     }
 }

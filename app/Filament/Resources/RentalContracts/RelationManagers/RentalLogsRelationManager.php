@@ -4,6 +4,7 @@ namespace App\Filament\Resources\RentalContracts\RelationManagers;
 
 use App\Models\Employee;
 use App\Services\Accounting\OperationalCostService;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -284,6 +285,8 @@ class RentalLogsRelationManager extends RelationManager
                     }),
             ])
             ->recordActions([
+                Action::make('lihat_bukti')->liatBukti(),
+
                 EditAction::make()
                     ->visible(fn ($record): bool => $record->invoice_id === null)
                     ->mutateDataUsing(function (array $data): array {

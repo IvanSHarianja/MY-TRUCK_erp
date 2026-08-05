@@ -136,20 +136,19 @@ class MaterialSaleForm
                             ->label('Diterima ke Akun')
                             ->options(function () {
                                 $tenant = Filament::getTenant();
-                                $query = Account::query()
-                                    ->where('is_active', true)
-                                    ->where('sub_category', 'aset_lancar')
-                                    ->where('code', 'like', '111%')
-                                    ->postable();
-                                if ($tenant) {
-                                    $query->where('company_id', $tenant->getKey());
-                                }
-                                return $query->orderBy('code')->get()
+                                if (! $tenant) return [];
+                                return Account::cashAccounts($tenant->getKey())
                                     ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])
                                     ->toArray();
                             })
                             ->searchable()
-                            ->helperText('Pilih sub-akun spesifik bank/kas (BCA / Mandiri / Kas Tunai / dll).'),
+                            ->helperText(function (): string {
+                                $tenant = Filament::getTenant();
+                                if (! $tenant) return '';
+                                return Account::cashAccounts($tenant->getKey())->isEmpty()
+                                    ? '⚠️ Belum ada akun kas/bank. Buka Master Data → Daftar Akun, buat akun ber-role "Kas" (atau kode 111xxx).'
+                                    : 'Pilih sub-akun spesifik bank/kas (BCA / Mandiri / Kas Tunai / dll).';
+                            }),
 
                         Textarea::make('notes')
                             ->label('Catatan')

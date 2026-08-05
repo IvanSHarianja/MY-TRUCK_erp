@@ -36,6 +36,40 @@ class Account extends Model
     }
 
     /**
+     * Akun-akun kas/bank yang valid untuk menerima pembayaran.
+     * Dipakai di semua form "Terima Pembayaran" (Invoice, Project DP, MaterialSale tunai).
+     *
+     * Resolusi:
+     *  1. Akun ber-role 'cash' atau 'cash_petty' (semantik, kode bebas)
+     *  2. Fallback: akun tanpa role tapi kode '111xxx' (backward compat template COA)
+     *
+     * Kenapa method sentral (bukan filter inline per form):
+     * User yang bikin COA custom (kode non-standar) sebelumnya tidak dapat opsi
+     * karena filter hardcode `code like '111%'`. Method ini pastikan role-based
+     * resolusi berlaku uniform di seluruh sistem.
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, self>
+     */
+    public static function cashAccounts(int $companyId): \Illuminate\Database\Eloquent\Collection
+    {
+        return static::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->where('is_active', true)
+            ->postable()
+            ->where(function ($q) {
+                $q->whereIn('role', [
+                    \App\Enums\AccountRole::Cash->value,
+                    \App\Enums\AccountRole::CashPetty->value,
+                ])->orWhere(function ($q2) {
+                    // Backward compat: akun template lama tanpa role, kode 111xxx
+                    $q2->whereNull('role')->where('code', 'like', '111%');
+                });
+            })
+            ->orderBy('code')
+            ->get();
+    }
+
+    /**
      * Ambil semua akun POSTABLE untuk company dengan role tertentu.
      * Dipakai di service layer sebagai pengganti hardcoded code lookup.
      */

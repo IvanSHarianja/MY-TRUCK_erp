@@ -14,9 +14,11 @@ use App\Observers\JournalEntryObserver;
 use App\Observers\RentalContractObserver;
 use App\Observers\RentalLogObserver;
 use App\Observers\RitLogObserver;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
+use Filament\Support\Icons\Heroicon;
 use Filament\Support\RawJs;
 use Illuminate\Support\ServiceProvider;
 
@@ -55,6 +57,9 @@ class AppServiceProvider extends ServiceProvider
 
         // ->rupiah() macro — format Indonesia (100.000.000). Display live
         // saat user ketik, strip '.' sebelum submit → DB simpan angka murni.
+        // Model yang dipakai di field ini WAJIB cast kolom ke 'integer'
+        // (bukan decimal:2), karena string "500000.00" bikin mask $money
+        // salah interpret titik sebagai thousand separator (tampil 100× lipat).
         TextInput::macro('rupiah', function () {
             /** @var TextInput $this */
             return $this
@@ -83,6 +88,19 @@ class AppServiceProvider extends ServiceProvider
                     now()->format('Y/m'),
                 ))
                 ->helperText('Foto struk/screenshot transfer. max 5MB.');
+        });
+
+        // Action::liatBukti() — row action untuk buka bukti transfer di tab baru.
+        // Auto-hidden kalau record belum ada bukti-nya. Pasang di table/RelationManager
+        // yang record-nya pakai trait HasBuktiTf (Payment, RentalLog, RitLog, dll).
+        Action::macro('liatBukti', function () {
+            /** @var Action $this */
+            return $this
+                ->label('Lihat Bukti')
+                ->icon(Heroicon::OutlinedPhoto)
+                ->color('info')
+                ->visible(fn ($record): bool => (bool) ($record?->bukti_tf_path))
+                ->url(fn ($record): ?string => $record?->bukti_tf_url, shouldOpenInNewTab: true);
         });
     }
 }

@@ -122,18 +122,13 @@ class ProjectsTable
                             Select::make('cash_account_id')
                                 ->label('Diterima ke Akun')
                                 ->required()
-                                ->options(function (Project $record) {
-                                    return Account::query()
-                                        ->where('company_id', $record->company_id)
-                                        ->where('is_active', true)
-                                        ->where('code', 'like', '111%')
-                                        ->postable()
-                                        ->orderBy('code')->get()
-                                        ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])
-                                        ->toArray();
-                                })
+                                ->options(fn (Project $record) => Account::cashAccounts($record->company_id)
+                                    ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])
+                                    ->toArray())
                                 ->searchable()
-                                ->helperText('Pilih sub-akun spesifik bank/kas.'),
+                                ->helperText(fn (Project $record): string => Account::cashAccounts($record->company_id)->isEmpty()
+                                    ? '⚠️ Belum ada akun kas/bank. Buka Master Data → Daftar Akun, buat akun ber-role "Kas" (atau kode 111xxx).'
+                                    : 'Pilih sub-akun spesifik bank/kas.'),
 
                             TextInput::make('amount')
                                 ->label('Nominal DP (Rp)')

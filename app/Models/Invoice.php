@@ -51,8 +51,11 @@ class Invoice extends Model
         'invoice_date' => 'date',
         'due_date'     => 'date',
         'voided_at'    => 'datetime',
-        'amount'       => 'decimal:2',
-        'paid_amount'  => 'decimal:2',
+        // Integer cast (bukan decimal:2) — Rupiah UMKM tidak pakai sen.
+        // decimal:2 return string "500000.00" yang bikin Filament mask $money
+        // salah interpret titik sebagai thousand separator → tampil 100x lipat.
+        'amount'       => 'integer',
+        'paid_amount'  => 'integer',
     ];
 
     protected static function booted(): void

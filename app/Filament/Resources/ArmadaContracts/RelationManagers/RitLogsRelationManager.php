@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ArmadaContracts\RelationManagers;
 use App\Models\Asset;
 use App\Models\Employee;
 use App\Services\Accounting\OperationalCostService;
+use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\EditAction;
@@ -216,6 +217,8 @@ class RitLogsRelationManager extends RelationManager
                     ])),
             ])
             ->recordActions([
+                Action::make('lihat_bukti')->liatBukti(),
+
                 EditAction::make()
                     ->visible(fn ($record): bool => $record->invoice_id === null),
                 DeleteAction::make()
