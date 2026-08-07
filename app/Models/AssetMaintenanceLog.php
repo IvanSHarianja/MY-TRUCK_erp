@@ -56,10 +56,11 @@ class AssetMaintenanceLog extends Model
         'bukti_tf_path',
     ];
 
+    // Integer cast untuk cost (Rupiah). HM (hour meter) tetap decimal.
     protected $casts = [
         'maintenance_date'  => 'date',
         'type'              => MaintenanceType::class,
-        'cost'              => 'decimal:2',
+        'cost'              => 'integer',
         'hm_saat_service'   => 'decimal:2',
         'next_service_hm'   => 'decimal:2',
         'next_service_date' => 'date',

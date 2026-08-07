@@ -41,26 +41,12 @@ class UserManagement extends Page implements HasTable
     }
 
     /**
-     * Akses halaman hanya untuk owner / admin di PT aktif.
+     * Akses halaman via Permission::UserManage — role sudah didefinisikan di
+     * App\Support\RoleMatrix (owner + admin).
      */
     public static function canAccess(): bool
     {
-        $tenant = Filament::getTenant();
-        if (! $tenant) {
-            return false;
-        }
-
-        $user = auth()->user();
-        if (! $user) {
-            return false;
-        }
-
-        $pivot = $user->companies()
-            ->where('companies.id', $tenant->getKey())
-            ->first()
-            ?->pivot;
-
-        return $pivot && in_array($pivot->role, ['owner', 'admin']);
+        return auth()->user()?->canCurrent(\App\Enums\Permission::UserManage) ?? false;
     }
 
     public function table(Table $table): Table

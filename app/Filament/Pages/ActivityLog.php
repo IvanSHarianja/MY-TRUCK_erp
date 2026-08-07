@@ -37,14 +37,7 @@ class ActivityLog extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        $tenant = Filament::getTenant();
-        if (! $tenant) {
-            return false;
-        }
-        $user = auth()->user();
-        $pivot = $user?->companies()->where('companies.id', $tenant->getKey())->first()?->pivot;
-
-        return $pivot && in_array($pivot->role, ['owner', 'admin'], true);
+        return auth()->user()?->canCurrent(\App\Enums\Permission::ActivityLogView) ?? false;
     }
 
     public function table(Table $table): Table

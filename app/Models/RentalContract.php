@@ -45,18 +45,21 @@ class RentalContract extends Model
         'created_by',
     ];
 
+    // Integer cast untuk field Rupiah — cegah bug rupiah 100× lipat.
+    // billed_jam (jam kumulatif) & bbm_liter_per_jam (liter) tetap decimal karena
+    // bisa fractional.
     protected $casts = [
-        'tarif_per_jam'          => 'decimal:2',
+        'tarif_per_jam'          => 'integer',
         'billed_jam'             => 'decimal:2',
         'started_at'             => 'date',
         'ended_at'               => 'date',
         'include_bbm'            => 'boolean',
         'include_operator'       => 'boolean',
         'bbm_liter_per_jam'      => 'decimal:2',
-        'harga_bbm_per_liter'    => 'decimal:2',
-        'gaji_operator_per_hari' => 'decimal:2',
-        'uang_makan_per_hari'    => 'decimal:2',
-        'premi_per_jam'          => 'decimal:2',
+        'harga_bbm_per_liter'    => 'integer',
+        'gaji_operator_per_hari' => 'integer',
+        'uang_makan_per_hari'    => 'integer',
+        'premi_per_jam'          => 'integer',
     ];
 
     public function client(): BelongsTo

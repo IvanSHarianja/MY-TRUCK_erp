@@ -2,6 +2,7 @@
 
 namespace App\Services\Accounting;
 
+use App\Enums\DepreciationMethod;
 use App\Models\Account;
 use App\Models\Asset;
 use App\Models\BusinessUnit;
@@ -207,6 +208,217 @@ class DepreciationService
     }
 
     /**
+     * BIZ-03: Post jurnal penyusutan usage-based untuk 1 log usage.
+     *
+     * Dipanggil dari observer log (RentalLog/RitLog) saat log created/updated.
+     * Idempotent: kalau jurnal dengan `documentNumber` sudah ada (posted/draft),
+     * langsung return itu — tidak double-post.
+     *
+     * Cap: usage yang bikin akumulasi melebihi (purchase - salvage) di-clamp
+     * ke sisa depreciable base, biar aset tidak "over-depreciated".
+     *
+     * Return:
+     *   - JournalEntry: berhasil di-post (atau existing yang ditemukan)
+     *   - null: skip karena kondisi (bukan usage-based, per_unit=0, no sisa,
+     *           period closed, dst) — bukan error
+     *
+     * @param  Asset          $asset         Aset yang di-depresiasi (harus usage-based method)
+     * @param  float          $usage         Jumlah unit usage (jam/rit/hari) — dari log
+     * @param  Carbon         $date          Tanggal jurnal (biasanya log_date)
+     * @param  string         $documentNumber Deterministic doc: 'DEPUSE-{asset_id}-{log_id}'
+     * @param  string         $context       Description tambahan (mis. 'RentalLog #5')
+     */
+    public function postUsageDepreciation(
+        Asset $asset,
+        float $usage,
+        Carbon $date,
+        string $documentNumber,
+        string $context = '',
+    ): ?JournalEntry {
+        $method = $asset->depreciation_method;
+
+        if (! $method instanceof DepreciationMethod || ! $method->isUsageBased()) {
+            Log::info("postUsageDepreciation skip: asset {$asset->asset_code} method bukan usage-based");
+            return null;
+        }
+
+        if ($usage <= 0) {
+            return null;
+        }
+
+        $perUnit = $asset->depreciationPerUnit();
+        if ($perUnit <= 0) {
+            Log::info("postUsageDepreciation skip: asset {$asset->asset_code} per_unit=0 (useful_life belum diisi atau salvage>=purchase)");
+            return null;
+        }
+
+        $company = Company::findOrFail($asset->company_id);
+
+        // HIGH-1: Wrap dalam DB::transaction + lockForUpdate pada asset row supaya
+        // concurrent DEPUSE untuk aset yang sama di-serialize. Kalau tidak, dua
+        // request bareng bisa keduanya baca akumulasi sama → keduanya post amount
+        // yang sama → total akumulasi melampaui depreciable base (over-depreciation).
+        //
+        // Nested transaction OK: createEntryWithLines juga wrap tx, savepoint handle.
+        return DB::transaction(function () use ($asset, $usage, $date, $documentNumber, $context, $method, $perUnit, $company) {
+            // Lock asset row — force serialize concurrent postUsageDepreciation per asset
+            Asset::withoutGlobalScopes()
+                ->where('id', $asset->id)
+                ->lockForUpdate()
+                ->first();
+
+            // Idempotent check — sudah ada jurnal untuk log ini?
+            $existing = JournalEntry::withoutGlobalScopes()
+                ->where('company_id', $company->id)
+                ->where('document_number', $documentNumber)
+                ->whereIn('status', ['draft', 'posted'])
+                ->first();
+
+            if ($existing) {
+                return $existing;
+            }
+
+            // Cap ke sisa depreciable base — dibaca DALAM lock supaya race-safe
+            $currentAkumulasi = $this->getCurrentAkumulasi($asset);
+            $depreciableBase = max(0, (float) $asset->purchase_price - (float) $asset->salvage_value);
+            $remaining = max(0, $depreciableBase - $currentAkumulasi);
+
+            if ($remaining <= 0) {
+                Log::info("postUsageDepreciation skip: asset {$asset->asset_code} sudah fully depreciated");
+                return null;
+            }
+
+            $rawAmount = round($usage * $perUnit, 2);
+            $amount = min($rawAmount, $remaining);
+            if ($amount <= 0) {
+                return null;
+            }
+
+            // Period guard — mengikuti pattern DEP-*
+            try {
+                $this->journalService->assertPeriodOpen($company, $date->year, $date->month);
+            } catch (\Throwable $e) {
+                Log::info("postUsageDepreciation skip: periode {$date->year}-{$date->month} closed (asset {$asset->asset_code})");
+                return null;
+            }
+
+            return $this->postDepuseJournal($asset, $company, $date, $documentNumber, $context, $method, $usage, $perUnit, $amount);
+        });
+    }
+
+    /**
+     * Extract body dari transaction ke method terpisah supaya kompleksitas
+     * dalam closure tidak berlebihan. Semua parameter sudah tervalidasi di caller.
+     */
+    private function postDepuseJournal(
+        Asset $asset,
+        Company $company,
+        Carbon $date,
+        string $documentNumber,
+        string $context,
+        DepreciationMethod $method,
+        float $usage,
+        float $perUnit,
+        float $amount,
+    ): ?JournalEntry {
+
+        // Akun beban & akumulasi — sama seperti straight-line
+        $accBeban = Account::findByRoleOrCode(
+            \App\Enums\AccountRole::OpexPenyusutan,
+            $asset->defaultExpenseAccountCode(),
+            $company->id,
+        );
+
+        $akumulasiRole = match ($asset->defaultAkumulasiCode()) {
+            '112105' => \App\Enums\AccountRole::AkumulasiArmada,
+            '112115' => \App\Enums\AccountRole::AkumulasiKantor,
+            '112125' => \App\Enums\AccountRole::AkumulasiKendaraan,
+            default  => \App\Enums\AccountRole::AkumulasiKantor,
+        };
+        $accAkumulasi = Account::findByRoleOrCode(
+            $akumulasiRole,
+            $asset->defaultAkumulasiCode(),
+            $company->id,
+        );
+
+        if (! $accBeban || ! $accAkumulasi) {
+            Log::warning("postUsageDepreciation skip: akun beban/akumulasi tidak ditemukan untuk asset {$asset->asset_code}");
+            return null;
+        }
+
+        $bu = BusinessUnit::withoutGlobalScopes()
+            ->where('company_id', $company->id)
+            ->where('code', $asset->defaultBusinessUnitCode())
+            ->first();
+
+        $unitLabel = $method->unitLabel();
+        $description = sprintf(
+            'Penyusutan usage aset %s (%s) — %s %s @ Rp %s/%s%s',
+            $asset->asset_code,
+            $asset->name,
+            number_format($usage, ($usage == (int) $usage) ? 0 : 2, ',', '.'),
+            $unitLabel,
+            number_format($perUnit, 2, ',', '.'),
+            $unitLabel,
+            $context ? ' — ' . $context : '',
+        );
+
+        return $this->journalService->createEntryWithLines(
+            company: $company,
+            date: $date,
+            entryDataFactory: fn (string $entryNumber): array => [
+                'company_id'       => $company->id,
+                'entry_number'     => $entryNumber,
+                'entry_date'       => $date,
+                'document_number'  => $documentNumber,
+                'document_type'    => 'penyusutan',
+                'business_unit_id' => optional($bu)->id,
+                'description'      => $description,
+                'period_year'      => $date->year,
+                'period_month'     => $date->month,
+                'status'           => 'posted',
+                'created_by'       => Auth::id() ?? 1,
+                'posted_by'        => Auth::id() ?? 1,
+                'posted_at'        => now(),
+                'total_amount'     => $amount,
+            ],
+            linesFactory: fn (JournalEntry $entry): array => [
+                [
+                    'account_id'  => $accBeban->id,
+                    'asset_id'    => $asset->id,
+                    'description' => '[' . $asset->asset_code . '] Beban penyusutan usage (' . number_format($usage, 2, ',', '.') . ' ' . $unitLabel . ')',
+                    'debit'       => $amount,
+                    'kredit'      => 0,
+                ],
+                [
+                    'account_id'  => $accAkumulasi->id,
+                    'asset_id'    => $asset->id,
+                    'description' => '[' . $asset->asset_code . '] Akumulasi penyusutan usage',
+                    'debit'       => 0,
+                    'kredit'      => $amount,
+                ],
+            ],
+        );
+    }
+
+    /**
+     * Akumulasi penyusutan aset s/d saat ini (dari ledger — source of truth).
+     * Dipakai internal untuk cap postUsageDepreciation ke sisa depreciable.
+     */
+    private function getCurrentAkumulasi(Asset $asset): float
+    {
+        return (float) DB::table('journal_entry_lines as jl')
+            ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
+            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->where('je.company_id', $asset->company_id)
+            ->where('je.status', 'posted')
+            ->where('a.normal_balance', 'kredit')
+            ->where('a.sub_category', 'aset_tetap')
+            ->where('jl.asset_id', $asset->id)
+            ->sum(DB::raw('jl.kredit - jl.debit'));
+    }
+
+    /**
      * Cek eligibility aset untuk depresiasi periode tertentu.
      *
      * @return array{0: bool, 1: string} [eligible, reason]
@@ -215,6 +427,17 @@ class DepreciationService
     {
         if ($asset->status === 'non_aktif') {
             return [false, 'Status non_aktif (di-retire)'];
+        }
+
+        // BIZ-02: cron bulanan HANYA memproses straight_line.
+        // Aset usage-based dijurnal per log via observer (BIZ-03).
+        // Kalau tidak di-skip di sini → double-counting: monthly + per-log.
+        if ($asset->depreciation_method?->isUsageBased()) {
+            return [false, sprintf(
+                'Method %s (per %s) — dep di-post per log usage, bukan bulanan',
+                $asset->depreciation_method->value,
+                $asset->depreciation_method->unitLabel(),
+            )];
         }
 
         if (! $asset->purchase_date) {

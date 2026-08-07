@@ -2,12 +2,15 @@
 
 namespace App\Filament\Resources\Assets\Schemas;
 
+use App\Enums\DepreciationMethod;
+use App\Models\Asset;
 use App\Models\BusinessUnit;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
 class AssetForm
@@ -63,18 +66,81 @@ class AssetForm
                     ->rupiah()
                     ->required(),
 
-                TextInput::make('useful_life_months')
-                    ->label('Umur Ekonomis (bulan)')
-                    ->numeric()
-                    ->default(60)
-                    ->suffix('bulan')
-                    ->required(),
-
                 TextInput::make('salvage_value')
                     ->label('Nilai Residu')
                     ->default(0)
                     ->rupiah()
                     ->required(),
+
+                // ========================================================
+                // BIZ-02: Metode Penyusutan
+                // ========================================================
+                Select::make('depreciation_method')
+                    ->label('Metode Penyusutan')
+                    ->options(DepreciationMethod::options())
+                    ->default(DepreciationMethod::StraightLine->value)
+                    ->required()
+                    ->native(false)
+                    ->live()
+                    ->disabled(fn (?Asset $record): bool => (bool) $record?->hasPostedDepreciationJournal())
+                    ->helperText(function (?Asset $record): string {
+                        if ($record?->hasPostedDepreciationJournal()) {
+                            return 'Metode dikunci: aset ini sudah punya jurnal penyusutan. '
+                                . 'Untuk mengubah, void semua jurnal DEP-* / DEPUSE-* terkait terlebih dahulu.';
+                        }
+                        return 'Garis Lurus = penyusutan bulanan otomatis. '
+                            . 'Per Jam/Rit/Hari = penyusutan otomatis saat log usage di-post (aus per pemakaian).';
+                    })
+                    // dehydrated tetap true (default) supaya field dikirim ke server
+                    // walau disabled — hindari NULL yang bikin update Aset gagal.
+                    ->dehydrated(true),
+
+                TextInput::make('useful_life_months')
+                    ->label('Umur Ekonomis')
+                    ->numeric()
+                    ->default(60)
+                    ->suffix('bulan')
+                    ->required(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::StraightLine->value)
+                    ->visible(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::StraightLine->value),
+
+                TextInput::make('useful_life_hours')
+                    ->label('Umur Ekonomis')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01)
+                    ->suffix('jam')
+                    ->placeholder('mis. 10000 (10rb jam operasi)')
+                    ->required(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::PerHour->value)
+                    ->visible(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::PerHour->value)
+                    ->helperText(fn (?Asset $record): ?string => $record?->hasPostedDepreciationJournal()
+                        ? '⚠ Aset ini sudah punya jurnal penyusutan. Mengubah umur ekonomis akan mempengaruhi rate DEPUSE ke depan; jurnal historis tetap intact (PSAK 16 par. 51 — revisi estimasi diperlakukan prospektif).'
+                        : null),
+
+                TextInput::make('useful_life_rits')
+                    ->label('Umur Ekonomis')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.01)
+                    ->suffix('rit')
+                    ->placeholder('mis. 5000 (5rb rit muatan)')
+                    ->required(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::PerRit->value)
+                    ->visible(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::PerRit->value)
+                    ->helperText(fn (?Asset $record): ?string => $record?->hasPostedDepreciationJournal()
+                        ? '⚠ Aset ini sudah punya jurnal penyusutan. Mengubah umur ekonomis akan mempengaruhi rate DEPUSE ke depan; jurnal historis tetap intact (PSAK 16 par. 51 — revisi estimasi diperlakukan prospektif).'
+                        : null),
+
+                TextInput::make('useful_life_days')
+                    ->label('Umur Ekonomis')
+                    ->numeric()
+                    ->minValue(0)
+                    ->step(0.5)
+                    ->suffix('hari')
+                    ->placeholder('mis. 1825 (5 tahun × 365 hari)')
+                    ->required(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::PerDay->value)
+                    ->visible(fn (Get $get): bool => $get('depreciation_method') === DepreciationMethod::PerDay->value)
+                    ->helperText(fn (?Asset $record): string => $record?->hasPostedDepreciationJournal()
+                        ? '⚠ Aset ini sudah punya jurnal penyusutan. Mengubah umur ekonomis akan mempengaruhi rate DEPUSE ke depan; jurnal historis tetap intact (PSAK 16 par. 51 — revisi estimasi diperlakukan prospektif).'
+                        : 'Input log bisa half-day (0.5, 1.0, 1.5).'),
 
                 Select::make('account_id')
                     ->label('Akun Aset Tetap')
@@ -83,7 +149,7 @@ class AssetForm
                         titleAttribute: 'name',
                         modifyQueryUsing: fn ($query) => $query
                             ->where('sub_category', 'aset_tetap')
-                            ->postable(),  // ← hanya leaf account
+                            ->postable(),
                     )
                     ->getOptionLabelFromRecordUsing(fn ($record) => "[{$record->code}] {$record->name}")
                     ->searchable()

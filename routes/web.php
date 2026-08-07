@@ -35,5 +35,7 @@ Route::middleware(['web', 'auth', 'pdf.tenant'])->prefix('pdf')->name('pdf.')->g
         Route::get('/balance-sheet', [PdfController::class, 'balanceSheet'])->name('balance-sheet');
         Route::get('/equity-statement', [PdfController::class, 'equityStatement'])->name('equity-statement');
         Route::get('/cash-flow', [PdfController::class, 'cashFlow'])->name('cash-flow');
+        Route::get('/asset-depreciation', [PdfController::class, 'assetDepreciation'])->name('asset-depreciation');
+        Route::get('/asset-cost-per-unit', [PdfController::class, 'assetCostPerUnit'])->name('asset-cost-per-unit');
     });
 });

@@ -41,11 +41,12 @@ class MaterialSale extends Model
         'bukti_tf_path',
     ];
 
+    // Integer cast untuk uang. volume tetap decimal karena m³ bisa fractional.
     protected $casts = [
         'sale_date'    => 'date',
         'volume'       => 'decimal:2',
-        'harga_satuan' => 'decimal:2',
-        'total'        => 'decimal:2',
+        'harga_satuan' => 'integer',
+        'total'        => 'integer',
     ];
 
     public function client(): BelongsTo

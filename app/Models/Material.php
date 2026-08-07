@@ -20,9 +20,10 @@ class Material extends Model
         'is_active',
     ];
 
+    // Integer cast — cegah bug rupiah 100× lipat pada form ->rupiah().
     protected $casts = [
-        'harga_per_satuan' => 'decimal:2',
-        'harga_pokok'      => 'decimal:2',
+        'harga_per_satuan' => 'integer',
+        'harga_pokok'      => 'integer',
         'is_active'        => 'boolean',
     ];
 

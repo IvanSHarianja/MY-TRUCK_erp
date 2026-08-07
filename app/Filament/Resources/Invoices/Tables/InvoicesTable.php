@@ -237,7 +237,9 @@ class InvoicesTable
                     // BUG-08: pakai epsilon tolerance untuk hindari float drift
                     // (mis. 1e-10 residu dari sum) yang bikin button hilang padahal
                     // invoice belum ada pembayaran nyata.
-                    ->visible(fn (Invoice $r): bool => in_array($r->status, ['terbit']) && abs((float) $r->paid_amount) < 0.005)
+                    ->visible(fn (Invoice $r): bool => in_array($r->status, ['terbit'])
+                        && abs((float) $r->paid_amount) < 0.005
+                        && (auth()->user()?->can('void', $r) ?? false))
                     ->requiresConfirmation()
                     ->modalHeading('Void Invoice')
                     ->modalDescription('Invoice akan di-void dan jurnal pembalik akan di-post otomatis. Aksi ini tidak bisa dibatalkan.')

@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Company;
 use App\Models\Invoice;
+use App\Services\Accounting\AssetCostPerUnitService;
+use App\Services\Accounting\AssetDepreciationReportService;
 use App\Services\Accounting\BalanceSheetService;
 use App\Services\Accounting\CashFlowService;
 use App\Services\Accounting\EquityStatementService;
@@ -187,6 +189,66 @@ class PdfController extends Controller
         ]))->setPaper('a4');
 
         return $pdf->stream("Arus-Kas-{$tenant->slug}-{$year}-" . ($month ?? 'YTD') . ".pdf");
+    }
+
+    /**
+     * BIZ-04: Laporan Penyusutan per Aset PDF.
+     */
+    public function assetDepreciation(Request $request, Company $tenant)
+    {
+        $year  = (int) $request->query('year', now()->year);
+        $month = (int) $request->query('month', now()->month);
+
+        $filters = [
+            'type'             => $request->query('type') ?: null,
+            'business_unit_id' => $request->query('business_unit_id') ? (int) $request->query('business_unit_id') : null,
+            'method'           => $request->query('method') ?: null,
+        ];
+
+        $report = app(AssetDepreciationReportService::class)->getReport(
+            $tenant->id, $year, $month, $filters,
+        );
+
+        $pdf = Pdf::loadView('pdf.reports.asset-depreciation', array_merge($report, [
+            'company'     => $tenant,
+            'year'        => $year,
+            'month'       => $month,
+            'filters'     => $filters,
+            // Layout _layout.blade.php butuh $periodLabel (camelCase); service
+            // return 'period_label' (snake_case). Alias eksplisit di sini.
+            'periodLabel' => $report['period_label'],
+        ]))->setPaper('a4', 'landscape');
+
+        return $pdf->stream("Penyusutan-Aset-{$tenant->slug}-{$year}-{$month}.pdf");
+    }
+
+    /**
+     * BIZ-05: Laporan Biaya Operasional per Unit PDF.
+     */
+    public function assetCostPerUnit(Request $request, Company $tenant)
+    {
+        $year  = (int) $request->query('year', now()->year);
+        $month = (int) $request->query('month', now()->month);
+
+        $filters = [
+            'type'             => $request->query('type') ?: null,
+            'business_unit_id' => $request->query('business_unit_id') ? (int) $request->query('business_unit_id') : null,
+            'only_losing'      => (bool) $request->query('only_losing', false),
+        ];
+
+        $report = app(AssetCostPerUnitService::class)->getReport(
+            $tenant->id, $year, $month, $filters,
+        );
+
+        $pdf = Pdf::loadView('pdf.reports.asset-cost-per-unit', array_merge($report, [
+            'company'     => $tenant,
+            'year'        => $year,
+            'month'       => $month,
+            'filters'     => $filters,
+            'periodLabel' => $report['period_label'],
+        ]))->setPaper('a4', 'landscape');
+
+        return $pdf->stream("Biaya-per-Unit-{$tenant->slug}-{$year}-{$month}.pdf");
     }
 
     private function periodLabel(int $year, ?int $month): string

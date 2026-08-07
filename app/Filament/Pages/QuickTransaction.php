@@ -69,16 +69,7 @@ class QuickTransaction extends Page implements HasForms, HasTable
      */
     public static function canAccess(): bool
     {
-        $tenant = Filament::getTenant();
-        if (! $tenant) {
-            return false;
-        }
-        $user = auth()->user();
-        $pivot = $user?->companies()
-            ->where('companies.id', $tenant->getKey())
-            ->first()?->pivot;
-
-        return $pivot && in_array($pivot->role, ['owner', 'admin', 'accountant'], true);
+        return auth()->user()?->canCurrent(\App\Enums\Permission::QuickTransaction) ?? false;
     }
 
     public function mount(): void

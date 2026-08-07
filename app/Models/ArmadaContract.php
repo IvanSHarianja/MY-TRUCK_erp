@@ -45,19 +45,22 @@ class ArmadaContract extends Model
         'created_by',
     ];
 
+    // Integer cast untuk field Rupiah — hindari bug rupiah 100× lipat karena
+    // decimal:2 string "250000.00" bikin Filament mask $money salah interpret.
+    // Field non-Rp (bbm_liter_per_rit) tetap decimal karena bisa fractional (0.5 L).
     protected $casts = [
-        'tarif_per_rit'       => 'decimal:2',
+        'tarif_per_rit'       => 'integer',
         'billed_rit'          => 'integer',
         'started_at'          => 'date',
         'ended_at'            => 'date',
         'include_bbm'         => 'boolean',
         'include_operator'    => 'boolean',
         'bbm_liter_per_rit'   => 'decimal:2',
-        'harga_bbm_per_liter' => 'decimal:2',
-        'gaji_supir_per_hari' => 'decimal:2',
-        'uang_makan_per_hari' => 'decimal:2',
-        'uang_jalan_per_rit'  => 'decimal:2',
-        'premi_per_rit'       => 'decimal:2',
+        'harga_bbm_per_liter' => 'integer',
+        'gaji_supir_per_hari' => 'integer',
+        'uang_makan_per_hari' => 'integer',
+        'uang_jalan_per_rit'  => 'integer',
+        'premi_per_rit'       => 'integer',
     ];
 
     public function client(): BelongsTo

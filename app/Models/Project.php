@@ -41,11 +41,12 @@ class Project extends Model
         'created_by',
     ];
 
+    // Integer cast untuk field uang. Field % (persentase) tetap decimal.
     protected $casts = [
-        'nilai_kontrak'   => 'decimal:2',
+        'nilai_kontrak'   => 'integer',
         'progress_pct'    => 'decimal:2',
         'tertagih_pct'    => 'decimal:2',
-        'dp_diterima'     => 'decimal:2',
+        'dp_diterima'     => 'integer',
         'started_at'      => 'date',
         'target_end_date' => 'date',
         'ended_at'        => 'date',

@@ -24,6 +24,38 @@ class RegisterCompany extends RegisterTenant
     }
 
     /**
+     * Otorisasi akses halaman + tombol "Daftarkan PT Baru" di tenant menu.
+     *
+     * Aturan:
+     *   - User yang belum punya PT sama sekali → HARUS bisa akses (first-time
+     *     onboarding — kalau di-block, dia tidak bisa berbuat apa-apa).
+     *   - User yang sudah punya PT → HANYA boleh register PT baru kalau dia
+     *     owner minimal di salah satu PT yang dia punya akses.
+     *
+     * Filament respect canView() untuk sembunyikan tombol di tenant menu
+     * sekaligus 403 halaman kalau diakses langsung via URL.
+     */
+    public static function canView(): bool
+    {
+        $user = auth()->user();
+        if (! $user) {
+            return false;
+        }
+
+        $activeCompanies = $user->companies()
+            ->wherePivot('is_active', true)
+            ->get();
+
+        // First-time onboarding — belum ada PT apapun.
+        if ($activeCompanies->isEmpty()) {
+            return true;
+        }
+
+        // Existing user — cek apakah owner di minimal 1 PT.
+        return $activeCompanies->contains(fn ($c) => $c->pivot->role === 'owner');
+    }
+
+    /**
      * Heading dinamis: user baru (0 tenant) dapat sapaan welcome,
      * user existing (mau tambah company) dapat label singkat.
      */

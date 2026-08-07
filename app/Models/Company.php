@@ -34,7 +34,8 @@ class Company extends Model implements HasCurrentTenantLabel
             'fiscal_start'        => 'date',
             'fiscal_end'          => 'date',
             'is_active'           => 'boolean',
-            'harga_solar_default' => 'decimal:2',
+            // Integer cast — cegah bug rupiah 100× lipat pada form ->rupiah().
+            'harga_solar_default' => 'integer',
         ];
     }
 

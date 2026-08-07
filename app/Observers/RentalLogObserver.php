@@ -2,11 +2,14 @@
 
 namespace App\Observers;
 
+use App\Enums\DepreciationMethod;
 use App\Models\Account;
+use App\Models\Asset;
 use App\Models\BusinessUnit;
 use App\Models\Company;
 use App\Models\JournalEntry;
 use App\Models\RentalLog;
+use App\Services\Accounting\DepreciationService;
 use App\Services\Accounting\JournalService;
 use App\Services\Accounting\OperationalCostService;
 use Illuminate\Support\Carbon;
@@ -35,41 +38,65 @@ class RentalLogObserver
     public function __construct(
         private OperationalCostService $costService,
         private JournalService $journalService,
+        private DepreciationService $depreciationService,
     ) {}
 
     public function created(RentalLog $log): void
     {
-        if ($log->journal_entry_id) {
-            return;
+        // BBK biaya operasional (existing behavior)
+        if (! $log->journal_entry_id) {
+            $this->postCostJournal($log);
         }
 
-        $this->postCostJournal($log);
+        // BIZ-03: DEPUSE penyusutan usage-based (aset method=per_hour)
+        $this->postDepreciationJournal($log);
     }
 
     public function updated(RentalLog $log): void
     {
-        // Field yang mempengaruhi cost — kalau tidak berubah, skip repost.
+        // Field yang mempengaruhi cost — kalau tidak berubah, skip repost BBK.
+        // MEDIUM-2: asset_id juga trigger repost supaya BBK re-tag ke asset baru
+        // (amount BBK tidak berubah kalau jam sama, tapi asset_id tag di lines
+        // harus ikut asset baru — kalau tidak, laporan per-unit salah tag).
         $costFields = [
             'jam_kerja', 'solar_liter', 'override_biaya',
             'uang_makan_operator', 'premi_operator',
+            'asset_id',
         ];
+        $costChanged = collect($costFields)->contains(fn ($f) => $log->wasChanged($f));
 
-        $changed = collect($costFields)->contains(fn ($f) => $log->wasChanged($f));
-        if (! $changed) {
+        // BIZ-03: DEPUSE bergantung pada jam_kerja, asset_id, log_date.
+        $depFields = ['jam_kerja', 'asset_id', 'log_date'];
+        $depChanged = collect($depFields)->contains(fn ($f) => $log->wasChanged($f));
+
+        if (! $costChanged && ! $depChanged) {
             return;
         }
 
-        DB::transaction(function () use ($log) {
-            $this->voidExistingJournal($log);
-            // Reload biar journal_entry_id fresh (null setelah void)
+        DB::transaction(function () use ($log, $costChanged, $depChanged) {
+            if ($costChanged) {
+                $this->voidExistingJournal($log);
+            }
+            if ($depChanged) {
+                $this->voidDepreciationJournalsForLog($log);
+            }
+
+            // Reload biar journal_entry_id + field lain fresh
             $log->refresh();
-            $this->postCostJournal($log);
+
+            if ($costChanged) {
+                $this->postCostJournal($log);
+            }
+            if ($depChanged) {
+                $this->postDepreciationJournal($log);
+            }
         });
     }
 
     public function deleting(RentalLog $log): void
     {
         $this->voidExistingJournal($log);
+        $this->voidDepreciationJournalsForLog($log);
     }
 
     /**
@@ -193,5 +220,94 @@ class RentalLogObserver
         RentalLog::withoutEvents(function () use ($log) {
             $log->update(['journal_entry_id' => null]);
         });
+    }
+
+    /**
+     * BIZ-03: Post DEPUSE-{asset}-{log_id} jurnal penyusutan usage-based.
+     *
+     * Trigger: aset method = per_hour. Aset method per_rit dan per_day tidak
+     * dihandle di sini:
+     *   - per_rit dipicu dari RitLogObserver
+     *   - per_day belum di-wire (menunggu keputusan Q5 tentang field hari_kerja
+     *     atau konversi jam→hari). Log info supaya kelihatan.
+     */
+    private function postDepreciationJournal(RentalLog $log): void
+    {
+        if (! $log->asset_id) {
+            return;
+        }
+
+        $asset = Asset::withoutGlobalScopes()->find($log->asset_id);
+        if (! $asset) {
+            return;
+        }
+
+        $method = $asset->depreciation_method;
+        if (! $method instanceof DepreciationMethod) {
+            return;
+        }
+
+        if ($method === DepreciationMethod::PerDay) {
+            Log::info(sprintf(
+                'RentalLogObserver: asset %s method=per_day belum di-trigger otomatis. Log %d di-skip untuk DEPUSE.',
+                $asset->asset_code, $log->id,
+            ));
+            return;
+        }
+
+        // Hanya per_hour yang dipicu dari RentalLog
+        if ($method !== DepreciationMethod::PerHour) {
+            return;
+        }
+
+        $usage = (float) $log->jam_kerja;
+        if ($usage <= 0) {
+            return;
+        }
+
+        $documentNumber = sprintf('DEPUSE-%d-%d', $asset->id, $log->id);
+        $logDate = Carbon::parse($log->log_date);
+
+        $this->depreciationService->postUsageDepreciation(
+            asset: $asset,
+            usage: $usage,
+            date: $logDate,
+            documentNumber: $documentNumber,
+            context: 'RentalLog #' . $log->id
+                . (optional($log->rentalContract)->contract_number
+                    ? ' / ' . $log->rentalContract->contract_number
+                    : ''),
+        );
+    }
+
+    /**
+     * BIZ-03: Void semua jurnal DEPUSE untuk log ini.
+     *
+     * Pattern LIKE 'DEPUSE-%-{log_id}' mencover kasus edit yang mengganti
+     * asset_id — jurnal DEPUSE pakai asset_id LAMA, jadi voidExistingJournal
+     * pakai document_number DEPUSE-{new_asset_id}-{log_id} akan miss.
+     * LIKE pattern menangkap DEPUSE-{any_asset}-{log_id}.
+     *
+     * Note: log_id di suffix — pattern aman dari false-match antar log
+     * (LIKE 'DEPUSE-%-5' tidak match 'DEPUSE-%-15').
+     */
+    private function voidDepreciationJournalsForLog(RentalLog $log): void
+    {
+        $journals = JournalEntry::withoutGlobalScopes()
+            ->where('company_id', $log->company_id)
+            ->where('document_number', 'like', sprintf('DEPUSE-%%-%d', $log->id))
+            ->where('status', 'posted')
+            ->get();
+
+        foreach ($journals as $journal) {
+            try {
+                $this->journalService->void(
+                    $journal,
+                    'Auto-void: RentalLog ' . $log->id . ' diubah/dihapus',
+                );
+            } catch (\Throwable $e) {
+                Log::warning("RentalLogObserver: gagal void DEPUSE {$journal->entry_number}: {$e->getMessage()}");
+            }
+        }
     }
 }
