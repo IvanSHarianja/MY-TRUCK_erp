@@ -37,8 +37,9 @@ class RoleMatrix extends Page
 
     public static function canAccess(): bool
     {
-        // Semua user PT boleh lihat matrix (referensi).
-        return auth()->check() && Filament::getTenant() !== null;
+        // Hanya Owner yang boleh akses halaman Role Akses (baik view maupun edit).
+        // Non-owner: menu hidden dari sidebar + 403 kalau akses URL langsung.
+        return auth()->user()?->canCurrent(Permission::RoleManage) ?? false;
     }
 
     /**

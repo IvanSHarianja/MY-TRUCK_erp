@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\RentalContracts\RelationManagers;
 
 use App\Models\Employee;
+use App\Models\RentalLog;
 use App\Services\Accounting\OperationalCostService;
 use Filament\Actions\Action;
 use Filament\Actions\CreateAction;
@@ -32,6 +33,12 @@ class RentalLogsRelationManager extends RelationManager
 
     public function form(Schema $schema): Schema
     {
+        // BUG-HM-OVERLAP: capture asset_id kontrak untuk validator overlap.
+        // Kontrak = 1 aset (asset_id di RentalContract), semua log kontrak ini
+        // wajib punya asset_id sama.
+        $ownerRecord = $this->getOwnerRecord();
+        $assetId = $ownerRecord?->asset_id;
+
         return $schema
             ->components([
                 DatePicker::make('log_date')
@@ -39,6 +46,7 @@ class RentalLogsRelationManager extends RelationManager
                     ->required()
                     ->default(now())
                     ->native(false)
+                    ->live(onBlur: true)  // trigger revalidate hm_awal saat tanggal berubah
                     ->columnSpan(1),
 
                 Select::make('operator_id')
@@ -74,6 +82,39 @@ class RentalLogsRelationManager extends RelationManager
                             $set('jam_kerja', round($akhir - $awal, 2));
                         }
                     })
+                    // BUG-HM-OVERLAP: HM meter aset selalu naik seiring waktu.
+                    // Log baru harus punya HM Awal ≥ HM Akhir tertinggi dari log
+                    // aset ini yang tanggalnya ≤ tanggal log baru. Kalau lebih
+                    // rendah, artinya user mengklaim jam yang sudah dihitung log
+                    // sebelumnya (double-billing).
+                    ->rule(static function (Get $get, ?RentalLog $record) use ($assetId): \Closure {
+                        return static function (string $attribute, $value, \Closure $fail) use ($get, $record, $assetId): void {
+                            if ($value === null || $value === '' || ! $assetId) {
+                                return;
+                            }
+                            $newAwal = (float) $value;
+                            $newDate = $get('log_date');
+                            if (! $newDate) {
+                                return; // biarkan required log_date handle
+                            }
+
+                            $q = RentalLog::withoutGlobalScopes()
+                                ->where('asset_id', $assetId)
+                                ->where('log_date', '<=', $newDate);
+                            if ($record?->id) {
+                                $q->where('id', '!=', $record->id);
+                            }
+                            $maxHmAkhir = $q->max('hm_akhir');
+
+                            if ($maxHmAkhir !== null && $newAwal < (float) $maxHmAkhir) {
+                                $fail(sprintf(
+                                    'HM Awal (%s) < HM Akhir log sebelumnya (%s). Meter jam mesin selalu naik — periksa apakah HM meter di-reset atau log sebelumnya salah.',
+                                    number_format($newAwal, 1, ',', '.'),
+                                    number_format((float) $maxHmAkhir, 1, ',', '.'),
+                                ));
+                            }
+                        };
+                    })
                     ->columnSpan(1),
 
                 TextInput::make('hm_akhir')
@@ -84,12 +125,23 @@ class RentalLogsRelationManager extends RelationManager
                     ->placeholder('contoh: 4872.0')
                     ->live(onBlur: true)
                     // BUG-07: hard validation — HM akhir HARUS > HM awal.
-                    // Sebelumnya cuma warning visual (Placeholder), sementara data
-                    // tetap tersimpan → jam_kerja negatif. Sekarang form gagal submit.
-                    ->rules(['gt:hm_awal'])
-                    ->validationMessages([
-                        'gt' => 'HM akhir harus lebih besar dari HM awal.',
-                    ])
+                    // Pakai closure rule (bukan 'gt:hm_awal' string rule) karena
+                    // Filament live validation cuma slice field yang berubah
+                    // ke validator — sehingga referensi ke field lain via string
+                    // rule tidak ke-resolve. Closure rule via Get() baca dari
+                    // form state langsung, always accurate.
+                    ->rule(static function (Get $get): \Closure {
+                        return static function (string $attribute, $value, \Closure $fail) use ($get): void {
+                            if ($value === null || $value === '') {
+                                return; // biarkan `required` yang handle
+                            }
+                            $awal = (float) ($get('hm_awal') ?? 0);
+                            $akhir = (float) $value;
+                            if ($akhir <= $awal) {
+                                $fail('HM akhir harus lebih besar dari HM awal.');
+                            }
+                        };
+                    })
                     ->afterStateUpdated(function ($state, Get $get, Set $set) {
                         $awal = (float) ($get('hm_awal') ?? 0);
                         $akhir = (float) ($state ?? 0);
@@ -265,9 +317,10 @@ class RentalLogsRelationManager extends RelationManager
                     ->label('Input Jam Kerja')
                     ->mutateDataUsing(function (array $data, RelationManager $livewire): array {
                         $data['created_by'] = auth()->id();
+                        $assetId = $livewire->getOwnerRecord()->asset_id;
                         // Inherit asset_id dari parent contract — kolom NOT NULL,
                         // form tidak minta user pilih (karena kontrak sudah kunci alat).
-                        $data['asset_id'] = $livewire->getOwnerRecord()->asset_id;
+                        $data['asset_id'] = $assetId;
                         // Re-calc jam_kerja saat save (sebagai backup)
                         if (isset($data['hm_awal'], $data['hm_akhir'])) {
                             // BUG-07: guard kedua di server-side. Kalau client-side rule
@@ -281,6 +334,24 @@ class RentalLogsRelationManager extends RelationManager
                             }
                             $data['jam_kerja'] = $jamKerja;
                         }
+                        // BUG-HM-OVERLAP: server-side guard. Cek HM Awal ≥ HM Akhir
+                        // tertinggi dari log aset ini yang tanggalnya ≤ log baru.
+                        // Mencegah double-billing jam yang sudah ke-count log sebelumnya.
+                        if (isset($data['hm_awal'], $data['log_date']) && $assetId) {
+                            $maxHmAkhir = RentalLog::withoutGlobalScopes()
+                                ->where('asset_id', $assetId)
+                                ->where('log_date', '<=', $data['log_date'])
+                                ->max('hm_akhir');
+                            if ($maxHmAkhir !== null && (float) $data['hm_awal'] < (float) $maxHmAkhir) {
+                                throw \Illuminate\Validation\ValidationException::withMessages([
+                                    'hm_awal' => sprintf(
+                                        'HM Awal (%s) < HM Akhir log sebelumnya (%s). Meter jam mesin selalu naik — periksa apakah HM di-reset atau log sebelumnya salah.',
+                                        number_format((float) $data['hm_awal'], 1, ',', '.'),
+                                        number_format((float) $maxHmAkhir, 1, ',', '.'),
+                                    ),
+                                ]);
+                            }
+                        }
                         return $data;
                     }),
             ])
@@ -289,7 +360,7 @@ class RentalLogsRelationManager extends RelationManager
 
                 EditAction::make()
                     ->visible(fn ($record): bool => $record->invoice_id === null)
-                    ->mutateDataUsing(function (array $data): array {
+                    ->mutateDataUsing(function (array $data, $record): array {
                         if (isset($data['hm_awal'], $data['hm_akhir'])) {
                             // BUG-07: guard kedua di server-side. Kalau client-side rule
                             // di-bypass (mis. API direct atau JS di-nonaktifkan), ini
@@ -301,6 +372,24 @@ class RentalLogsRelationManager extends RelationManager
                                 ]);
                             }
                             $data['jam_kerja'] = $jamKerja;
+                        }
+                        // BUG-HM-OVERLAP: server-side guard untuk edit — exclude
+                        // record ini sendiri dari cek supaya tidak "menyaingi" diri.
+                        if (isset($data['hm_awal'], $data['log_date']) && $record?->asset_id) {
+                            $maxHmAkhir = RentalLog::withoutGlobalScopes()
+                                ->where('asset_id', $record->asset_id)
+                                ->where('log_date', '<=', $data['log_date'])
+                                ->where('id', '!=', $record->id)
+                                ->max('hm_akhir');
+                            if ($maxHmAkhir !== null && (float) $data['hm_awal'] < (float) $maxHmAkhir) {
+                                throw \Illuminate\Validation\ValidationException::withMessages([
+                                    'hm_awal' => sprintf(
+                                        'HM Awal (%s) < HM Akhir log lain sebelumnya (%s). Meter jam mesin selalu naik.',
+                                        number_format((float) $data['hm_awal'], 1, ',', '.'),
+                                        number_format((float) $maxHmAkhir, 1, ',', '.'),
+                                    ),
+                                ]);
+                            }
                         }
                         return $data;
                     }),

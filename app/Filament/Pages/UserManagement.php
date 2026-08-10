@@ -209,6 +209,10 @@ class UserManagement extends Page implements HasTable
                     ->label('Ubah Role')
                     ->icon(Heroicon::OutlinedPencilSquare)
                     ->modalHeading('Ubah Role Pengguna')
+                    // Admin tidak boleh sentuh Owner — hanya sesama Owner (atau
+                    // Owner solo di PT-nya) yang bisa manage Owner. Cegah
+                    // privilege escalation (admin demote owner untuk take-over).
+                    ->visible(fn (User $record): bool => static::canManageTargetUser($record))
                     ->fillForm(fn (User $record) => [
                         'role'      => $record->companies->first()?->pivot->role,
                         'is_active' => (bool) ($record->companies->first()?->pivot->is_active ?? true),
@@ -216,12 +220,23 @@ class UserManagement extends Page implements HasTable
                     ->schema([
                         Select::make('role')
                             ->label('Role')
-                            ->options([
-                                'owner'      => 'Owner',
-                                'admin'      => 'Admin',
-                                'accountant' => 'Accountant',
-                                'viewer'     => 'Viewer',
-                            ])
+                            ->options(function () {
+                                // Owner-only: full options. Non-owner (Admin):
+                                // tanpa "Owner" — cegah privilege escalation.
+                                $all = [
+                                    'owner'      => 'Owner',
+                                    'admin'      => 'Admin',
+                                    'accountant' => 'Accountant',
+                                    'viewer'     => 'Viewer',
+                                ];
+                                if (! static::actorIsOwnerOfCurrentTenant()) {
+                                    unset($all['owner']);
+                                }
+                                return $all;
+                            })
+                            ->helperText(fn (): ?string => static::actorIsOwnerOfCurrentTenant()
+                                ? null
+                                : 'Anda tidak bisa promote user ke Owner. Hanya Owner PT yang punya kewenangan itu.')
                             ->required()
                             ->native(false),
 
@@ -231,10 +246,32 @@ class UserManagement extends Page implements HasTable
                             ->helperText('Nonaktifkan untuk suspend akses sementara tanpa hapus.'),
                     ])
                     ->action(function (User $record, array $data) use ($tenant) {
-                        // Cegah owner terakhir di-demote
+                        // Server-side guard — kalau visible() somehow di-bypass
+                        // (mis. Livewire method call langsung), tetap tolak.
+                        if (! static::canManageTargetUser($record)) {
+                            Notification::make()
+                                ->title('Tidak diizinkan')
+                                ->body('Anda tidak boleh mengubah role user dengan level lebih tinggi.')
+                                ->danger()
+                                ->send();
+                            return;
+                        }
+
                         $newRole = $data['role'];
                         $currentRole = $record->companies->first()?->pivot->role;
 
+                        // Cegah non-owner promote user jadi Owner (privilege escalation).
+                        $actorIsOwner = static::actorIsOwnerOfCurrentTenant();
+                        if ($newRole === 'owner' && ! $actorIsOwner) {
+                            Notification::make()
+                                ->title('Tidak diizinkan')
+                                ->body('Hanya Owner yang boleh promote user ke Owner.')
+                                ->danger()
+                                ->send();
+                            return;
+                        }
+
+                        // Cegah owner terakhir di-demote
                         if ($currentRole === 'owner' && $newRole !== 'owner') {
                             $ownerCount = $tenant->users()->wherePivot('role', 'owner')->count();
                             if ($ownerCount <= 1) {
@@ -266,8 +303,21 @@ class UserManagement extends Page implements HasTable
                     ->requiresConfirmation()
                     ->modalHeading('Cabut Akses User dari PT Ini?')
                     ->modalDescription(fn (User $record) => "User {$record->name} tidak akan bisa akses PT ini lagi. Akun user-nya TIDAK terhapus, hanya dilepas dari PT.")
-                    ->visible(fn (User $record) => $record->id !== auth()->id())
+                    // Hidden untuk: (1) diri sendiri, (2) user Owner kalau saya bukan Owner.
+                    ->visible(fn (User $record): bool =>
+                        $record->id !== auth()->id() && static::canManageTargetUser($record)
+                    )
                     ->action(function (User $record) use ($tenant) {
+                        // Server-side guard (defense-in-depth)
+                        if (! static::canManageTargetUser($record)) {
+                            Notification::make()
+                                ->title('Tidak diizinkan')
+                                ->body('Anda tidak boleh mencabut akses user dengan level lebih tinggi.')
+                                ->danger()
+                                ->send();
+                            return;
+                        }
+
                         $currentRole = $record->companies->first()?->pivot->role;
 
                         if ($currentRole === 'owner') {
@@ -297,5 +347,64 @@ class UserManagement extends Page implements HasTable
             ->emptyStateHeading('Belum ada pengguna lain')
             ->emptyStateDescription('Klik "Tambah Pengguna" untuk invite user lain ke PT ini.')
             ->emptyStateIcon(Heroicon::OutlinedUsers);
+    }
+
+    /**
+     * Cek apakah actor (user yang login) boleh manage target user di PT aktif.
+     *
+     * Aturan hierarki:
+     *   - Owner boleh manage semua (Owner, Admin, Accountant, Viewer).
+     *   - Non-Owner (Admin) HANYA boleh manage user setara/di bawah (Admin,
+     *     Accountant, Viewer) — TIDAK boleh sentuh Owner. Ini cegah privilege
+     *     escalation di mana admin demote owner untuk take-over PT.
+     */
+    protected static function canManageTargetUser(User $target): bool
+    {
+        $tenant = Filament::getTenant();
+        if (! $tenant) {
+            return false;
+        }
+
+        $actor = auth()->user();
+        if (! $actor) {
+            return false;
+        }
+
+        $actorPivot = $actor->companies()
+            ->where('companies.id', $tenant->getKey())
+            ->first()?->pivot;
+        $targetPivot = $target->companies()
+            ->where('companies.id', $tenant->getKey())
+            ->first()?->pivot;
+
+        if (! $actorPivot || ! $targetPivot) {
+            return false;
+        }
+
+        // Non-owner tidak boleh sentuh Owner
+        if ($targetPivot->role === 'owner' && $actorPivot->role !== 'owner') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Cek apakah actor adalah Owner di PT aktif. Dipakai untuk guard promote
+     * user ke Owner (hanya Owner yang boleh).
+     */
+    protected static function actorIsOwnerOfCurrentTenant(): bool
+    {
+        $tenant = Filament::getTenant();
+        if (! $tenant) return false;
+
+        $actor = auth()->user();
+        if (! $actor) return false;
+
+        $pivot = $actor->companies()
+            ->where('companies.id', $tenant->getKey())
+            ->first()?->pivot;
+
+        return $pivot && $pivot->role === 'owner';
     }
 }

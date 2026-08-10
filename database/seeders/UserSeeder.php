@@ -14,7 +14,7 @@ class UserSeeder extends Seeder
             ['email' => 'admin@mytruck.test'],
             [
                 'name' => 'Super Admin',
-                'password' => Hash::make('password'),
+                'password' => Hash::make('Admintest123!'),
             ]
         );
     }
