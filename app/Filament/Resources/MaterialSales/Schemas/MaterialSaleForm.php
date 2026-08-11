@@ -146,8 +146,8 @@ class MaterialSaleForm
                                 $tenant = Filament::getTenant();
                                 if (! $tenant) return '';
                                 return Account::cashAccounts($tenant->getKey())->isEmpty()
-                                    ? '⚠️ Belum ada akun kas/bank. Buka Master Data → Daftar Akun, buat akun ber-role "Kas" (atau kode 111xxx).'
-                                    : 'Pilih sub-akun spesifik bank/kas (BCA / Mandiri / Kas Tunai / dll).';
+                                    ? '⚠️ Belum ada sub-akun kas/bank. Buat akun parent kas (mis. [111100] Kas dan Bank) di Master Data → Daftar Akun, lalu tambah sub-akun spesifik di bawahnya (mis. Kas BCA, Kas Mandiri).'
+                                    : 'Pilih sub-akun spesifik bank/kas (BCA / Mandiri / Kas Tunai / dll). Akun HEADER dan akun tanpa parent tidak muncul.';
                             }),
 
                         Textarea::make('notes')

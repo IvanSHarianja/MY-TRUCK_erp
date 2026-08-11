@@ -175,8 +175,8 @@ class InvoicesTable
                                 ->toArray())
                             ->searchable()
                             ->helperText(fn (Invoice $record): string => Account::cashAccounts($record->company_id)->isEmpty()
-                                ? '⚠️ Belum ada akun kas/bank. Buka Master Data → Daftar Akun, buat akun ber-role "Kas" atau "Kas Kecil" (atau kode 111xxx).'
-                                : 'Pilih sub-akun spesifik (BCA / Mandiri / dll). Akun HEADER otomatis disembunyikan.'),
+                                ? '⚠️ Belum ada sub-akun kas/bank. Buka Master Data → Daftar Akun. Buat akun parent kas (mis. [111100] Kas dan Bank) lalu tambah sub-akun spesifik di bawahnya (mis. [111100-01] Kas BCA, [111100-02] Kas Mandiri) — parent-nya ikat ke akun kas utama. Sub-akun tersebutlah yang akan muncul di dropdown ini.'
+                                : 'Pilih sub-akun spesifik (BCA / Mandiri / dll). Akun HEADER dan akun tanpa parent tidak muncul.'),
 
                         TextInput::make('amount')
                             ->label('Nominal (Rp)')

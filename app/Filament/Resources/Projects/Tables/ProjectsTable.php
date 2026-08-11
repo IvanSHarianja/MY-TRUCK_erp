@@ -127,8 +127,8 @@ class ProjectsTable
                                     ->toArray())
                                 ->searchable()
                                 ->helperText(fn (Project $record): string => Account::cashAccounts($record->company_id)->isEmpty()
-                                    ? '⚠️ Belum ada akun kas/bank. Buka Master Data → Daftar Akun, buat akun ber-role "Kas" (atau kode 111xxx).'
-                                    : 'Pilih sub-akun spesifik bank/kas.'),
+                                    ? '⚠️ Belum ada sub-akun kas/bank. Buat akun parent kas (mis. [111100] Kas dan Bank) di Master Data → Daftar Akun, lalu tambah sub-akun spesifik di bawahnya.'
+                                    : 'Pilih sub-akun spesifik bank/kas. Akun HEADER dan akun tanpa parent tidak muncul.'),
 
                             TextInput::make('amount')
                                 ->label('Nominal DP (Rp)')

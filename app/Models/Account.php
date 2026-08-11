@@ -56,6 +56,11 @@ class Account extends Model
             ->where('company_id', $companyId)
             ->where('is_active', true)
             ->postable()
+            // Hanya sub-akun (child) yang boleh dipakai di jurnal kas.
+            // Akun standalone tanpa parent (mis. "Kas dan Bank" utama) tidak
+            // dianggap valid — user harus buat sub-akun spesifik lebih dulu
+            // (Kas BCA, Kas Mandiri, dll) supaya audit trail per rekening jelas.
+            ->whereNotNull('parent_code')
             ->where(function ($q) {
                 $q->whereIn('role', [
                     \App\Enums\AccountRole::Cash->value,
