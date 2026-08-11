@@ -126,7 +126,14 @@ class AccountForm
                     ->afterStateUpdated(function ($state, Set $set, Get $get) {
                         if (! $state) return;
 
-                        if (empty($get('sub_category'))) {
+                        // Cek kalau sub_category existing masih valid untuk category baru.
+                        // Kalau user ganti category dari 'aset' ke 'beban', nilai lama
+                        // 'aset_lancar' harus di-reset supaya tidak silent-mismatch.
+                        $existingSub = $get('sub_category');
+                        $validSubs = array_keys(Account::validSubCategoriesForCategory($state));
+                        $subInvalid = $existingSub && ! in_array($existingSub, $validSubs, true);
+
+                        if (empty($existingSub) || $subInvalid) {
                             $set('sub_category', match ($state) {
                                 'aset'       => 'aset_lancar',
                                 'kewajiban'  => 'kewajiban_lancar',
@@ -148,10 +155,16 @@ class AccountForm
                         }
                     }),
 
-                TextInput::make('sub_category')
+                Select::make('sub_category')
                     ->label('Sub-Kategori')
-                    ->placeholder('contoh: aset_lancar, beban_hpp')
-                    ->helperText('Otomatis terisi dari Kategori/Role. Boleh diubah manual bila perlu (mis. aset_lancar → aset_tetap untuk aset armada).'),
+                    // Dropdown dinamis by category — cegah silent failure
+                    // (typo/mismatch bikin akun hilang dari Neraca/L-R diam-diam).
+                    // Kalau category belum dipilih, tampilkan semua opsi valid.
+                    ->options(fn (Get $get): array => Account::validSubCategoriesForCategory($get('category')))
+                    ->required()
+                    ->native(false)
+                    ->searchable()
+                    ->helperText('Otomatis terisi dari Kategori/Role. Pilihan dibatasi supaya konsisten dengan Kategori — cegah akun hilang dari laporan karena mismatch klasifikasi.'),
 
                 Select::make('normal_balance')
                     ->label('Saldo Normal')

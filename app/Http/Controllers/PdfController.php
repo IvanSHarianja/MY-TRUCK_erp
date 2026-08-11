@@ -7,6 +7,7 @@ use App\Models\Invoice;
 use App\Services\Accounting\AssetCostPerUnitService;
 use App\Services\Accounting\AssetDepreciationReportService;
 use App\Services\Accounting\BalanceSheetService;
+use App\Services\Accounting\CashFlowLakService;
 use App\Services\Accounting\CashFlowService;
 use App\Services\Accounting\EquityStatementService;
 use App\Services\Accounting\IncomeStatementByAssetService;
@@ -189,6 +190,26 @@ class PdfController extends Controller
         ]))->setPaper('a4');
 
         return $pdf->stream("Arus-Kas-{$tenant->slug}-{$year}-" . ($month ?? 'YTD') . ".pdf");
+    }
+
+    /**
+     * Cash Flow LAK (Format Operasional) PDF — mirror layout Excel legacy.
+     */
+    public function cashFlowLak(Request $request, Company $tenant)
+    {
+        $year  = (int) $request->query('year', now()->year);
+        $month = $request->query('month') ? (int) $request->query('month') : null;
+
+        $report = app(CashFlowLakService::class)->getReport($tenant->id, $year, $month);
+
+        $pdf = Pdf::loadView('pdf.reports.cash-flow-lak', array_merge($report, [
+            'company'     => $tenant,
+            'year'        => $year,
+            'month'       => $month,
+            'periodLabel' => $this->periodLabel($year, $month),
+        ]))->setPaper('a4');
+
+        return $pdf->stream("Arus-Kas-LAK-{$tenant->slug}-{$year}-" . ($month ?? 'YTD') . ".pdf");
     }
 
     /**

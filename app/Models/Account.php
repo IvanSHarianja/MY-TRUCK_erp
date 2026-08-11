@@ -135,6 +135,66 @@ class Account extends Model
         return static::byRole($role, $companyId)->pluck('id')->all();
     }
 
+    /**
+     * Sub-kategori valid per kategori — single source of truth.
+     *
+     * KENAPA method statik dan bukan enum kelas terpisah:
+     * Value hanya 10 string dan berbagi konvensi dengan AccountRole::defaultSubCategory().
+     * Enum kelas terpisah bikin duplikasi ke enum yang sudah ada. Method statik cukup
+     * untuk dropdown UI + validasi + audit command.
+     *
+     * DIPAKAI OLEH:
+     *  - AccountForm: dropdown Select options
+     *  - Account::booted::saving: validasi mismatch category vs sub_category
+     *  - AuditAccountSubCategoryCommand: scan data lama yang inkonsisten
+     *
+     * @return array<string, array<string, string>> category → [sub_category_value => label]
+     */
+    public static function validSubCategoriesForCategory(?string $category): array
+    {
+        $map = [
+            'aset' => [
+                'aset_lancar' => 'Aset Lancar',
+                'aset_tetap'  => 'Aset Tetap',
+            ],
+            'kewajiban' => [
+                'kewajiban_lancar'  => 'Kewajiban Lancar',
+                'kewajiban_panjang' => 'Kewajiban Panjang',
+            ],
+            'ekuitas' => [
+                'ekuitas' => 'Ekuitas',
+            ],
+            'pendapatan' => [
+                'pendapatan_usaha' => 'Pendapatan Usaha',
+                'pendapatan_lain'  => 'Pendapatan Lain',
+            ],
+            'beban' => [
+                'beban_hpp'         => 'Beban HPP',
+                'beban_operasional' => 'Beban Operasional',
+            ],
+            'penutup' => [
+                'penutup' => 'Penutup',
+            ],
+        ];
+
+        if ($category === null) {
+            // Return flattened dengan grouping — kalau category belum dipilih di form.
+            return array_merge(...array_values($map));
+        }
+
+        return $map[$category] ?? [];
+    }
+
+    /**
+     * Semua sub_category valid (flat array of value → label) — untuk audit.
+     *
+     * @return array<string, string>
+     */
+    public static function allValidSubCategories(): array
+    {
+        return static::validSubCategoriesForCategory(null);
+    }
+
     protected static function booted(): void
     {
         // === Auto-fill sub_category & cash_flow_category (Sprint 2.5+) ===
@@ -182,6 +242,37 @@ class Account extends Model
                     'penutup'                                    => 'non_kas',
                     default                                       => null,
                 };
+            }
+        });
+
+        // === Validasi consistency sub_category vs category ===
+        //
+        // KENAPA hard-throw, bukan auto-fix ke default:
+        // Kalau user set sub_category='beban_hpp' padahal category='aset', ini
+        // BUKAN typo user yang bisa diselamatkan — ini logic bug. Silent-fix
+        // ke default aset_lancar akan menutupi kesalahan input. Lebih baik
+        // fail cepat dengan pesan jelas supaya user perbaiki di form.
+        //
+        // Kalau sub_category kosong, auto-fill di block di atas sudah handle.
+        // Sisa case yang bisa masuk sini: user explicit set value invalid
+        // (misal via API, seeder rusak, edit langsung DB).
+        static::saving(function (Account $account) {
+            if (empty($account->sub_category) || empty($account->category)) {
+                return; // Auto-fill akan handle empty case
+            }
+
+            $validSubCategories = array_keys(
+                static::validSubCategoriesForCategory($account->category)
+            );
+
+            if (! in_array($account->sub_category, $validSubCategories, true)) {
+                $validList = implode(', ', $validSubCategories);
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'sub_category' => "Sub-Kategori '{$account->sub_category}' tidak valid untuk "
+                        . "Kategori '{$account->category}'. Pilih salah satu: {$validList}. "
+                        . "Kesalahan input di sini bisa bikin akun ini HILANG dari Neraca/L-R "
+                        . "tanpa warning — periksa kembali klasifikasi akun.",
+                ]);
             }
         });
 
