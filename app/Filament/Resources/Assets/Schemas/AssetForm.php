@@ -58,6 +58,7 @@ class AssetForm
 
                 DatePicker::make('purchase_date')
                     ->label('Tanggal Pembelian')
+                    ->required()
                     ->native(false),
 
                 TextInput::make('purchase_price')
@@ -153,12 +154,14 @@ class AssetForm
                     )
                     ->getOptionLabelFromRecordUsing(fn ($record) => "[{$record->code}] {$record->name}")
                     ->searchable()
+                    ->required()
                     ->preload()
                     ->helperText('Akun HEADER otomatis disembunyikan — pilih sub-akun spesifik.'),
 
                 Select::make('default_business_unit_id')
                     ->label('Lini Bisnis Default')
                     ->native(false)
+                    ->required()
                     ->options(function () {
                         $tenant = Filament::getTenant();
                         $q = BusinessUnit::query()->where('is_active', true);

@@ -21,6 +21,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Password;
 
 class UserManagement extends Page implements HasTable
 {
@@ -128,6 +129,13 @@ class UserManagement extends Page implements HasTable
                                     ->mapWithKeys(fn ($u) => [$u->id => "{$u->name} ({$u->email})"])
                                     ->toArray();
                             })
+                            // Filament v5 wajib punya getOptionLabelUsing kalau
+                            // pakai getSearchResultsUsing — dipakai buat validasi
+                            // submitted value + display label setelah user pilih.
+                            ->getOptionLabelUsing(function ($value): ?string {
+                                $user = User::find($value);
+                                return $user ? "{$user->name} ({$user->email})" : null;
+                            })
                             ->visible(fn ($get) => $get('mode') === 'existing')
                             ->requiredIf('mode', 'existing'),
 
@@ -145,17 +153,44 @@ class UserManagement extends Page implements HasTable
                             ->placeholder('staff@perusahaan.com')
                             ->visible(fn ($get) => $get('mode') === 'new')
                             ->requiredIf('mode', 'new')
+                            // Cegah browser autofill dengan credential owner yang login.
+                            // Chrome/Edge otherwise isi field dengan email login yang tersimpan.
+                            ->extraInputAttributes([
+                                'autocomplete'    => 'off',
+                                'data-lpignore'   => 'true',   // LastPass
+                                'data-1p-ignore'  => 'true',   // 1Password
+                                'data-form-type'  => 'other',
+                            ])
                             ->rule(Rule::unique('users', 'email')),
 
                         TextInput::make('new_password')
                             ->label('Password')
                             ->password()
                             ->revealable()
-                            ->minLength(6)
-                            ->placeholder('Minimal 6 karakter')
+                            ->placeholder('Min 6 karakter, campur huruf besar/kecil + angka')
                             ->visible(fn ($get) => $get('mode') === 'new')
                             ->requiredIf('mode', 'new')
-                            ->helperText('Bagikan password ini ke user via cara aman setelah dibuat.'),
+                            // Wajib min 6 char + huruf BESAR + huruf kecil + angka.
+                            // Pakai Laravel Password rule (bukan regex manual) supaya
+                            // pesan error konsisten & bisa ditambah `->uncompromised()`
+                            // nanti kalau butuh cek password bocor.
+                            ->rule(Password::min(6)->mixedCase()->numbers())
+                            ->validationMessages([
+                                'min'     => 'Password minimal 6 karakter.',
+                                'mixed'   => 'Password harus mengandung huruf BESAR dan huruf kecil.',
+                                'letters' => 'Password harus mengandung huruf.',
+                                'numbers' => 'Password harus mengandung minimal 1 angka.',
+                            ])
+                            // 'new-password' adalah token khusus di Chrome/Firefox untuk
+                            // password baru (mis. form register/reset) — browser dijamin
+                            // TIDAK autofill dengan password login yang tersimpan.
+                            ->extraInputAttributes([
+                                'autocomplete'   => 'new-password',
+                                'data-lpignore'  => 'true',
+                                'data-1p-ignore' => 'true',
+                                'data-form-type' => 'other',
+                            ])
+                            ->helperText('Minimal 6 karakter, wajib ada huruf BESAR, huruf kecil, dan angka.'),
 
                         // === Role (selalu tampil) ===
                         Select::make('role')
