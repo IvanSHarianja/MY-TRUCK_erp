@@ -3,18 +3,26 @@
 namespace App\Filament\Pages\Tenancy;
 
 use App\Models\Company;
+use App\Services\CoaImportService;
 use App\Services\CompanyTemplateService;
+use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Notification;
+use Filament\Schemas\Components\Actions;
 use Filament\Pages\Tenancy\RegisterTenant;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class RegisterCompany extends RegisterTenant
 {
@@ -143,20 +151,45 @@ class RegisterCompany extends RegisterTenant
                     ]),
 
                 Section::make('Mode Setup Data Awal')
-                    ->description('Pilih apakah sistem menyiapkan data master otomatis, atau Anda akan setup manual dari nol.')
+                    ->description('Pilih apakah sistem menyiapkan data master otomatis, Anda import COA dari Excel, atau setup manual dari nol.')
                     ->schema([
                         Radio::make('seed_mode')
                             ->label('Cara Setup')
                             ->required()
+                            ->live()
                             ->default('template')
                             ->options([
                                 'template' => 'Standar (Rekomendasi) — Auto-setup COA 51 akun + 5 lini bisnis + 7 material default',
+                                'import'   => 'Import COA dari Excel — Pakai COA milik PT Anda dari file .xlsx',
                                 'empty'    => 'Kosongan — Saya akan buat COA dan master data manual',
                             ])
                             ->descriptions([
                                 'template' => 'Cocok untuk perusahaan alat berat / dump truck / kontraktor pengurugan. Struktur akun mengikuti standar akuntansi Indonesia. Langsung bisa pakai fitur transaksi.',
+                                'import'   => 'Cocok kalau perusahaan Anda sudah punya COA sendiri (mis. dari MYOB / Accurate / Zahir / Excel manual). Download template dulu, isi sesuai COA Anda, lalu upload.',
                                 'empty'    => 'Cocok kalau perusahaan Anda punya struktur COA khusus. Perhatian: fitur transaksi (invoice, jurnal, penyusutan) BARU bisa dipakai setelah Anda buat minimal akun-akun ini di menu Master Data: 111100 Kas, 111200 Piutang, 221100 Utang, 441xxx Pendapatan, 551xxx Beban HPP, 552xxx Beban Operasional.',
                             ]),
+
+                        Actions::make([
+                            Action::make('downloadCoaTemplate')
+                                ->label('Download Template Excel')
+                                ->icon('heroicon-o-arrow-down-tray')
+                                ->color('primary')
+                                ->url('/coa-template.xlsx', shouldOpenInNewTab: true),
+                        ])
+                            ->visible(fn (Get $get): bool => $get('seed_mode') === 'import'),
+
+                        FileUpload::make('coa_excel_path')
+                            ->label('File Excel COA (.xlsx)')
+                            ->helperText('Isi sheet "COA" — kolom Kode, Nama Akun, Kategori, Kode Parent. Baris contoh WAJIB dihapus sebelum upload. Maksimal 5 MB.')
+                            ->acceptedFileTypes([
+                                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            ])
+                            ->maxSize(5120)
+                            ->disk('local')
+                            ->directory('coa-imports')
+                            ->visibility('private')
+                            ->visible(fn (Get $get): bool => $get('seed_mode') === 'import')
+                            ->required(fn (Get $get): bool => $get('seed_mode') === 'import'),
                     ]),
 
                 Section::make('Kontak (Opsional)')
@@ -172,38 +205,86 @@ class RegisterCompany extends RegisterTenant
 
     protected function handleRegistration(array $data): Company
     {
-        $company = Company::create([
-            'name'         => $data['name'],
-            'slug'         => $data['slug'],
-            'owner_name'   => $data['owner_name'] ?? null,
-            'fiscal_year'  => $data['fiscal_year'],
-            'fiscal_start' => $data['fiscal_start'],
-            'fiscal_end'   => $data['fiscal_end'],
-            'phone'        => $data['phone']   ?? null,
-            'email'        => $data['email']   ?? null,
-            'address'      => $data['address'] ?? null,
-            'is_active'    => true,
-        ]);
+        $seedMode     = $data['seed_mode'] ?? 'template';
+        $relativePath = $data['coa_excel_path'] ?? null;
+        $importCount  = 0;
 
-        // Attach user yang sedang login sebagai owner.
-        $company->users()->attach(auth()->id(), [
-            'role'      => 'owner',
-            'is_active' => true,
-        ]);
+        try {
+            // Atomic: kalau seed apapun gagal (parse Excel, constraint, dll),
+            // Company::create + attach user OTOMATIS rollback. Tidak butuh
+            // compensating $company->delete() lagi — DB transaction yang urus.
+            $company = DB::transaction(function () use ($data, $seedMode, $relativePath, &$importCount) {
+                $company = Company::create([
+                    'name'         => $data['name'],
+                    'slug'         => $data['slug'],
+                    'owner_name'   => $data['owner_name'] ?? null,
+                    'fiscal_year'  => $data['fiscal_year'],
+                    'fiscal_start' => $data['fiscal_start'],
+                    'fiscal_end'   => $data['fiscal_end'],
+                    'phone'        => $data['phone']   ?? null,
+                    'email'        => $data['email']   ?? null,
+                    'address'      => $data['address'] ?? null,
+                    'is_active'    => true,
+                ]);
 
-        // Conditional seed berdasar pilihan user di form.
-        // 'template' → auto-seed COA + BU + Material (default: rekomendasi).
-        // 'empty'    → skip seed, user setup manual — beri notifikasi peringatan.
-        $seedMode = $data['seed_mode'] ?? 'template';
+                $company->users()->attach(auth()->id(), [
+                    'role'      => 'owner',
+                    'is_active' => true,
+                ]);
 
+                if ($seedMode === 'template') {
+                    app(CompanyTemplateService::class)->seedDefaults($company);
+                } elseif ($seedMode === 'import') {
+                    if (! $relativePath) {
+                        throw ValidationException::withMessages([
+                            'coa_excel_path' => 'File Excel wajib di-upload untuk mode Import.',
+                        ]);
+                    }
+
+                    $absolutePath = Storage::disk('local')->path($relativePath);
+
+                    $importCount = app(CoaImportService::class)->seedFromExcel($company, $absolutePath);
+
+                    // BU + Material default tetap di-seed (fitur operasional langsung jalan).
+                    // Dalam outer transaction: kalau ini fail, COA + Company juga rollback.
+                    app(CompanyTemplateService::class)->seedBusinessUnits($company);
+                    app(CompanyTemplateService::class)->seedMaterials($company);
+                }
+                // 'empty' → no-op
+
+                return $company;
+            });
+        } finally {
+            // Cleanup file upload dalam semua kondisi (sukses / gagal / exception apapun).
+            // Diletakkan di luar transaction karena filesystem tidak transactional —
+            // kalau delete gagal, minimal transaction DB tidak terganggu.
+            if ($relativePath) {
+                Storage::disk('local')->delete($relativePath);
+            }
+        }
+
+        // Notification HANYA dikirim setelah transaction commit — supaya "sukses"
+        // tidak salah kirim kalau transaction rollback.
+        $this->sendPostRegistrationNotification($seedMode, $importCount);
+
+        return $company;
+    }
+
+    private function sendPostRegistrationNotification(string $seedMode, int $importCount): void
+    {
         if ($seedMode === 'template') {
-            app(CompanyTemplateService::class)->seedDefaults($company);
-
             Notification::make()
                 ->title('PT tersedia dengan template lengkap')
                 ->body('COA 51 akun, 5 lini bisnis, dan 7 material default telah di-set. Anda bisa langsung input transaksi.')
                 ->success()
                 ->duration(8000)
+                ->send();
+        } elseif ($seedMode === 'import') {
+            Notification::make()
+                ->title('PT tersedia dengan COA hasil import')
+                ->body("Berhasil import {$importCount} akun dari file Excel Anda. 5 lini bisnis + 7 material default juga sudah di-set.")
+                ->success()
+                ->duration(10000)
                 ->send();
         } else {
             Notification::make()
@@ -214,7 +295,5 @@ class RegisterCompany extends RegisterTenant
                 ->persistent()
                 ->send();
         }
-
-        return $company;
     }
 }

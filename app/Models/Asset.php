@@ -25,6 +25,7 @@ class Asset extends Model
         'useful_life_hours',
         'useful_life_rits',
         'useful_life_days',
+        'monthly_target_hours',
         'salvage_value',
         'account_id',
         'default_business_unit_id',
@@ -48,6 +49,7 @@ class Asset extends Model
             'useful_life_hours'   => 'decimal:2',
             'useful_life_rits'    => 'decimal:2',
             'useful_life_days'    => 'decimal:2',
+            'monthly_target_hours'=> 'decimal:2',
         ];
     }
 

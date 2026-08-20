@@ -24,6 +24,7 @@ use App\Models\RentalContract;
 use App\Models\RentalLog;
 use App\Models\RitLog;
 use App\Models\Vendor;
+use App\Enums\Permission;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
@@ -157,10 +158,16 @@ class EditCompanyProfile extends EditTenantProfile
     {
         return [
             // === Aksi: Reset Semua Jurnal ===
+            //
+            // Owner-only: menghapus SEMUA jurnal + periode = mengubah struktur historis PT,
+            // sama beratnya dengan hapus PT. Pakai permission CompanyDelete (owner-only
+            // di RoleMatrix). Admin/Accountant/Viewer TIDAK boleh — mereka tidak akan
+            // melihat tombol ini di header.
             Action::make('resetJournals')
                 ->label('Hapus Semua Jurnal')
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->color('warning')
+                ->visible(fn (): bool => auth()->user()?->canCurrent(Permission::CompanyDelete) ?? false)
                 ->requiresConfirmation()
                 ->modalHeading('Hapus Semua Jurnal di PT Ini?')
                 ->modalDescription('Akan menghapus SEMUA jurnal (draft + posted + void) dan periode akuntansi PT ini. Master data (COA, lini bisnis, klien, vendor, aset, karyawan) TIDAK terhapus. Tindakan ini tidak bisa dibatalkan.')
@@ -191,10 +198,13 @@ class EditCompanyProfile extends EditTenantProfile
                 }),
 
             // === Aksi: Hapus PT Selamanya ===
+            //
+            // Owner-only via Permission::CompanyDelete (RoleMatrix: only Role::Owner).
             Action::make('deleteCompany')
                 ->label('Hapus PT Ini')
                 ->icon(Heroicon::OutlinedTrash)
                 ->color('danger')
+                ->visible(fn (): bool => auth()->user()?->canCurrent(Permission::CompanyDelete) ?? false)
                 ->requiresConfirmation()
                 ->modalHeading('Hapus PT Ini Selamanya?')
                 ->modalDescription('Semua data PT akan terhapus permanen (cascade): jurnal, COA, lini bisnis, klien, vendor, aset, karyawan, periode akuntansi. Tindakan ini TIDAK bisa dibatalkan.')

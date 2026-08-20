@@ -11,6 +11,7 @@ use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use App\Models\Material;
 use App\Models\MaterialSale;
+use App\Models\MaterialStockMovement;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -64,6 +65,33 @@ class MaterialSaleService
 
         if ($volume <= 0) {
             throw ValidationException::withMessages(['volume' => 'Volume harus lebih dari 0.']);
+        }
+
+        // BIZ-01: Stock guard — cegah sale kalau stok < qty diminta.
+        // Backward-compat: material yang belum PERNAH ada stock movement =
+        // legacy (tidak track inventory) → allow sale, HPP fallback ke
+        // harga_pokok statis di postCogs().
+        // Kalau material sudah ada history purchase/adjustment → strict guard.
+        $currentStock = (float) $material->current_stock;
+        if ($volume > $currentStock) {
+            $hasMovements = MaterialStockMovement::withoutGlobalScopes()
+                ->where('material_id', $material->id)
+                ->exists();
+
+            if ($hasMovements) {
+                throw ValidationException::withMessages([
+                    'volume' => sprintf(
+                        'Stok %s tidak cukup. Tersedia: %s %s, diminta: %s %s. '
+                        . 'Input pembelian material dulu di menu Master Data → Pembelian Material.',
+                        $material->name,
+                        rtrim(rtrim(number_format($currentStock, 2, ',', '.'), '0'), ','),
+                        $material->satuan,
+                        rtrim(rtrim(number_format($volume, 2, ',', '.'), '0'), ','),
+                        $material->satuan,
+                    ),
+                ]);
+            }
+            // else: material legacy tanpa inventory tracking → allow, fallback ke harga_pokok statis
         }
 
         $this->journalService->assertPeriodOpen($company, $saleDate->year, $saleDate->month);
@@ -240,7 +268,20 @@ class MaterialSaleService
      */
     private function postCogs(MaterialSale $sale, Company $company, ?BusinessUnit $matlUnit): void
     {
-        $hargaPokok = (float) $sale->material->harga_pokok;
+        // BIZ-01: Prefer current_mac (Moving Average Cost dari purchase real).
+        // Fallback ke harga_pokok statis kalau MAC = 0 (mis. material yang belum
+        // pernah ada purchase — data legacy).
+        // Lock material row untuk race-safe stock update.
+        $lockedMaterial = Material::withoutGlobalScopes()
+            ->where('id', $sale->material_id)
+            ->lockForUpdate()
+            ->first();
+
+        $macCost = (float) $lockedMaterial->current_mac;
+        $hargaPokok = $macCost > 0
+            ? $macCost
+            : (float) $sale->material->harga_pokok;
+
         if ($hargaPokok <= 0) {
             // Business decision (2026-07-20): HPP OPTIONAL. Kalau kosong,
             // sale tetap sukses tapi jurnal HPP di-skip → laba kotor overstate.
@@ -281,10 +322,27 @@ class MaterialSaleService
 
         // Sprint 2.5: role-based
         $accHpp = Account::findByRoleOrCode(\App\Enums\AccountRole::CogsMaterial, '551300', $company->id);
-        $accKas = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
 
-        if (! $accHpp || ! $accKas) {
-            Log::warning("MaterialSaleService::postCogs: akun 551300 atau 111100 tidak ditemukan/postable untuk company {$company->id}. Skip HPP {$sale->sale_number}.");
+        // BIZ-01: Kalau MAC dipakai (ada purchase), credit ke Persediaan Material.
+        // Kalau fallback ke harga_pokok statis (legacy — tidak ada purchase),
+        // tetap credit ke Kas (backward compat asumsi lama "beli material tunai").
+        $usingMac = $macCost > 0;
+        if ($usingMac) {
+            $accKredit = Account::findByRoleOrCode(
+                \App\Enums\AccountRole::InventorySolar,
+                '111260',
+                $company->id,
+            ) ?? Account::withoutGlobalScopes()
+                ->where('company_id', $company->id)
+                ->where('code', '111220')
+                ->postable()
+                ->first();
+        } else {
+            $accKredit = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
+        }
+
+        if (! $accHpp || ! $accKredit) {
+            Log::warning("MaterialSaleService::postCogs: akun HPP (551300) atau credit account tidak ditemukan/postable untuk company {$company->id}. Skip HPP {$sale->sale_number}.");
             return;
         }
 
@@ -315,17 +373,53 @@ class MaterialSaleService
             linesFactory:     fn (JournalEntry $entry): array => [
                 [
                     'account_id'  => $accHpp->id,
-                    'description' => 'HPP ' . $sale->material->name . ' × ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan,
+                    'description' => 'HPP ' . $sale->material->name . ' × ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan . ($usingMac ? ' @ MAC Rp ' . number_format($hargaPokok, 2, ',', '.') : ' (harga_pokok statis)'),
                     'debit'       => $totalHpp,
                     'kredit'      => 0,
                 ],
                 [
-                    'account_id'  => $accKas->id,
-                    'description' => 'Pembayaran material (asumsi tunai — MVP tanpa inventory)',
+                    'account_id'  => $accKredit->id,
+                    'description' => $usingMac
+                        ? 'Persediaan ' . $sale->material->name . ' berkurang ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
+                        : 'Pembayaran material (asumsi tunai — data legacy tanpa purchase)',
                     'debit'       => 0,
                     'kredit'      => $totalHpp,
                 ],
             ],
         );
+
+        // BIZ-01: Update stock + record movement OUT (hanya kalau pakai MAC).
+        // Legacy sale (harga_pokok statis) tidak update stock karena tidak
+        // ada purchase yang naikkan stock sebelumnya — asumsi lama beli-jual
+        // instan tanpa inventory.
+        if ($usingMac) {
+            $stockBefore = (float) $lockedMaterial->current_stock;
+            $stockAfter  = max(0, $stockBefore - (float) $sale->volume);
+
+            DB::table('materials')
+                ->where('id', $lockedMaterial->id)
+                ->update([
+                    'current_stock' => $stockAfter,
+                    // MAC tidak berubah saat sale (hanya berubah saat purchase)
+                    'updated_at'    => now(),
+                ]);
+
+            MaterialStockMovement::create([
+                'company_id'   => $company->id,
+                'material_id'  => $lockedMaterial->id,
+                'movement_type'=> 'out',
+                'source_type'  => MaterialSale::class,
+                'source_id'    => $sale->id,
+                'qty_change'   => -1 * (float) $sale->volume,
+                'unit_cost'    => $hargaPokok,
+                'stock_before' => $stockBefore,
+                'stock_after'  => $stockAfter,
+                'mac_before'   => (float) $lockedMaterial->current_mac,
+                'mac_after'    => (float) $lockedMaterial->current_mac,
+                'movement_date'=> $saleDate,
+                'notes'        => 'Penjualan ' . $sale->sale_number,
+                'created_by'   => Auth::id() ?? $sale->created_by,
+            ]);
+        }
     }
 }

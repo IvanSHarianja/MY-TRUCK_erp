@@ -63,9 +63,13 @@ class DepreciationService
 
         foreach ($assets as $asset) {
             try {
-                if ($this->postAssetDepreciation($asset, $company, $targetDate)) {
+                // BUG-DEPUSE-04: return type sekarang float (0.0 = skip, >0 = posted amount).
+                // Amount di-report akurat untuk semua method (StraightLine + PerDay),
+                // termasuk kalau dicap ke sisa depreciable base.
+                $amount = $this->postAssetDepreciation($asset, $company, $targetDate);
+                if ($amount > 0) {
                     $posted++;
-                    $totalAmount += (float) $asset->monthly_depreciation;
+                    $totalAmount += $amount;
                 } else {
                     $skipped++;
                 }
@@ -118,17 +122,43 @@ class DepreciationService
      * Depresiasi 1 aset untuk 1 bulan target.
      * Return true kalau berhasil post, false kalau skip.
      */
-    private function postAssetDepreciation(Asset $asset, Company $company, Carbon $targetDate): bool
+    private function postAssetDepreciation(Asset $asset, Company $company, Carbon $targetDate): float
     {
         [$eligible, $reason] = $this->checkEligibility($asset, $company, $targetDate);
         if (! $eligible) {
             Log::info("DepreciationService: asset {$asset->asset_code} skip untuk {$targetDate->format('Y-m')} — {$reason}");
-            return false;
+            return 0.0;
         }
 
-        $monthly = (float) $asset->monthly_depreciation;
+        // BUG-DEPUSE-04: PerDay dihitung time-based: perDay × days_in_month.
+        // Straight-line pakai monthly_depreciation accessor seperti biasa.
+        $method = $asset->depreciation_method;
+        if ($method === DepreciationMethod::PerDay) {
+            $perDay = $asset->depreciationPerUnit();
+            $monthly = round($perDay * $targetDate->daysInMonth, 2);
+        } else {
+            $monthly = (float) $asset->monthly_depreciation;
+        }
+
         if ($monthly <= 0) {
-            return false;
+            return 0.0;
+        }
+
+        // BUG-DEPUSE-05 / HIGH-3 dari audit: cap ke sisa depreciable base.
+        // Straight-line rounding 2 dp × N bulan bisa overshoot depreciable base
+        // beberapa sen. PerDay lebih rentan (per-hari value × jumlah hari).
+        // Cap ini memastikan akumulasi ≤ (purchase_price - salvage_value).
+        $depreciableBase = (float) $asset->purchase_price - (float) $asset->salvage_value;
+        $accumulated = $this->getAccumulatedDepreciation($asset, $company);
+        $remaining = round($depreciableBase - $accumulated, 2);
+
+        if ($remaining <= 0) {
+            Log::info("DepreciationService: asset {$asset->asset_code} sudah fully depreciated (akumulasi {$accumulated} >= base {$depreciableBase})");
+            return 0.0;
+        }
+
+        if ($monthly > $remaining) {
+            $monthly = $remaining;
         }
 
         // Sprint 2.5: role-based lookup dengan fallback code.
@@ -204,7 +234,47 @@ class DepreciationService
             ],
         );
 
-        return true;
+        return $monthly;
+    }
+
+    /**
+     * Total akumulasi penyusutan yang sudah ter-posted untuk aset tertentu.
+     * Sum semua kredit di akun akumulasi (kredit=akumulasi bertambah, debit=reversal).
+     *
+     * Dipakai untuk cap monthly depreciation ke sisa depreciable base — mencegah
+     * akumulasi overshoot `(purchase_price - salvage_value)` gara-gara rounding.
+     */
+    private function getAccumulatedDepreciation(Asset $asset, Company $company): float
+    {
+        $akumulasiRole = match ($asset->defaultAkumulasiCode()) {
+            '112105' => \App\Enums\AccountRole::AkumulasiArmada,
+            '112115' => \App\Enums\AccountRole::AkumulasiKantor,
+            '112125' => \App\Enums\AccountRole::AkumulasiKendaraan,
+            default  => \App\Enums\AccountRole::AkumulasiKantor,
+        };
+
+        $accAkumulasi = Account::findByRoleOrCode(
+            $akumulasiRole,
+            $asset->defaultAkumulasiCode(),
+            $company->id,
+        );
+
+        if (! $accAkumulasi) {
+            return 0.0;
+        }
+
+        // Net: kredit - debit. Hanya line dari jurnal posted (bukan void/draft)
+        // dan yang di-tag ke aset ini spesifik.
+        $result = DB::table('journal_entry_lines')
+            ->join('journal_entries', 'journal_entries.id', '=', 'journal_entry_lines.journal_entry_id')
+            ->where('journal_entries.company_id', $company->id)
+            ->where('journal_entries.status', 'posted')
+            ->where('journal_entry_lines.account_id', $accAkumulasi->id)
+            ->where('journal_entry_lines.asset_id', $asset->id)
+            ->selectRaw('COALESCE(SUM(kredit), 0) - COALESCE(SUM(debit), 0) AS net')
+            ->value('net');
+
+        return (float) $result;
     }
 
     /**
@@ -429,14 +499,16 @@ class DepreciationService
             return [false, 'Status non_aktif (di-retire)'];
         }
 
-        // BIZ-02: cron bulanan HANYA memproses straight_line.
-        // Aset usage-based dijurnal per log via observer (BIZ-03).
-        // Kalau tidak di-skip di sini → double-counting: monthly + per-log.
-        if ($asset->depreciation_method?->isUsageBased()) {
+        // BIZ-02 / BUG-DEPUSE-04:
+        // Cron bulanan proses StraightLine + PerDay (dua-duanya time-based).
+        // PerHour + PerRit dipost per log usage via observer — SKIP di sini
+        // (kalau tidak di-skip → double-counting: monthly + per-log).
+        $method = $asset->depreciation_method;
+        if ($method === DepreciationMethod::PerHour || $method === DepreciationMethod::PerRit) {
             return [false, sprintf(
                 'Method %s (per %s) — dep di-post per log usage, bukan bulanan',
-                $asset->depreciation_method->value,
-                $asset->depreciation_method->unitLabel(),
+                $method->value,
+                $method->unitLabel(),
             )];
         }
 
@@ -444,8 +516,15 @@ class DepreciationService
             return [false, 'Tanggal pembelian belum diisi'];
         }
 
-        if (! $asset->useful_life_months || $asset->useful_life_months <= 0) {
-            return [false, 'Umur ekonomis belum diisi'];
+        // Umur ekonomis check per-method:
+        // - StraightLine → useful_life_months
+        // - PerDay       → useful_life_days
+        $lifeField = $method === DepreciationMethod::PerDay
+            ? 'useful_life_days'
+            : 'useful_life_months';
+
+        if (! $asset->{$lifeField} || $asset->{$lifeField} <= 0) {
+            return [false, "Umur ekonomis ({$lifeField}) belum diisi"];
         }
 
         $purchaseDate = Carbon::parse($asset->purchase_date);
@@ -458,11 +537,18 @@ class DepreciationService
             return [false, "Belum eligible: pembelian {$purchaseDate->format('Y-m')}, depresiasi mulai {$firstDepreciationMonth->format('Y-m')}"];
         }
 
-        // BUG-30: Carbon 3 diffInMonths return float. Round untuk hindari
-        // off-by-1 di boundary bulan karena timezone/DST drift.
-        $monthsElapsed = (int) round($firstDepreciationMonth->diffInMonths($targetMonth)) + 1;
-        if ($monthsElapsed > (int) $asset->useful_life_months) {
-            return [false, "Fully depreciated (umur ekonomis {$asset->useful_life_months} bulan sudah habis)"];
+        // Check umur habis:
+        // - StraightLine: pakai bulan (monthsElapsed vs useful_life_months)
+        // - PerDay: cap dilakukan via remaining depreciable base di postAssetDepreciation
+        //   (tidak bisa akurat cek "days elapsed" bulan berjalan karena hari sudah
+        //   di-post di bulan sebelumnya harus diakumulasi)
+        if ($method !== DepreciationMethod::PerDay) {
+            // BUG-30: Carbon 3 diffInMonths return float. Round untuk hindari
+            // off-by-1 di boundary bulan karena timezone/DST drift.
+            $monthsElapsed = (int) round($firstDepreciationMonth->diffInMonths($targetMonth)) + 1;
+            if ($monthsElapsed > (int) $asset->useful_life_months) {
+                return [false, "Fully depreciated (umur ekonomis {$asset->useful_life_months} bulan sudah habis)"];
+            }
         }
 
         // Cek idempotency: sudah ada jurnal untuk aset+periode ini?

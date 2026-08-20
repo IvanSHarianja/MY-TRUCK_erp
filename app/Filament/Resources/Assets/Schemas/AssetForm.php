@@ -73,6 +73,15 @@ class AssetForm
                     ->rupiah()
                     ->required(),
 
+                TextInput::make('monthly_target_hours')
+                    ->label('Target Jam per Bulan (Dashboard)')
+                    ->numeric()
+                    ->step(0.5)
+                    ->minValue(0)
+                    ->suffix('jam')
+                    ->placeholder('Kosongkan → auto')
+                    ->helperText('Target utilization aset per bulan. Dipakai untuk widget "Utilization Aset" di Dashboard Operasional. Kalau kosong, sistem otomatis pakai (Umur Ekonomis Jam ÷ 60) atau default 200 jam.'),
+
                 // ========================================================
                 // BIZ-02: Metode Penyusutan
                 // ========================================================

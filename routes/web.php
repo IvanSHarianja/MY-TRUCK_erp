@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CoaTemplateController;
 use App\Http\Controllers\PdfController;
 use Illuminate\Support\Facades\Route;
 
@@ -11,6 +12,16 @@ use Illuminate\Support\Facades\Route;
  *  - Sudah login → ke dashboard tenant (/admin/{tenant-slug})
  */
 Route::get('/', fn () => redirect('/admin'));
+
+/**
+ * Download template Excel COA — public (dipakai saat first-time register PT,
+ * user belum login). File template kosong tanpa data sensitif.
+ * Throttle: max 20 request/menit per IP — endpoint membangun spreadsheet
+ * in-memory tiap request, cegah abuse.
+ */
+Route::get('/coa-template.xlsx', CoaTemplateController::class)
+    ->middleware('throttle:20,1')
+    ->name('coa.template.download');
 
 /**
  * PDF Export Routes (auth + tenant access required).

@@ -33,6 +33,18 @@ class MaterialsTable
                 TextColumn::make('satuan')
                     ->label('Satuan')
                     ->badge(),
+                TextColumn::make('current_stock')
+                    ->label('Stok')
+                    ->numeric(decimalPlaces: 2)
+                    ->alignEnd()
+                    ->color(fn ($state) => (float) $state <= 0 ? 'danger' : 'success')
+                    ->weight('semibold'),
+                TextColumn::make('current_mac')
+                    ->label('MAC (Harga Pokok)')
+                    ->money('IDR', 0)
+                    ->alignEnd()
+                    ->tooltip('Moving Average Cost — auto-recalc dari pembelian material')
+                    ->toggleable(),
                 IconColumn::make('is_active')
                     ->label('Aktif')
                     ->boolean(),

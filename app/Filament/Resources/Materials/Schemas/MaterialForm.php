@@ -41,17 +41,16 @@ class MaterialForm
                     ->rupiah()
                     ->helperText('Harga jual default ke klien.'),
 
-                TextInput::make('harga_pokok')
-                    ->label('Harga Pokok per Satuan (HPP)')
-                    // Business decision (2026-07-20): HPP OPTIONAL — boleh kosong / 0.
-                    // Alasan: HPP kadang belum diketahui saat awal (HPP fluktuatif,
-                    // vendor tidak selalu kasih kwitansi, atau bertahap per proyek).
-                    // KONSEKUENSI: kalau HPP=0, jurnal HPP TIDAK terbentuk saat sale
-                    // → laba kotor akan overstate. Notifikasi warning muncul di
-                    // MaterialSaleService untuk tetap alert user (opsi B).
-                    ->default(0)
-                    ->rupiah()
-                    ->helperText('Biaya modal per satuan. OPSIONAL — kalau diisi > 0 akan auto-post jurnal HPP setiap penjualan. Kalau kosong / 0, laba kotor = harga jual (overstate).'),
+                TextInput::make('current_mac')
+                    ->label('Harga Pokok per Satuan (MAC)')
+                    // BIZ-01: HPP sekarang auto-computed dari Moving Average Cost
+                    // hasil pembelian material. Field ini DISPLAY ONLY — bukan input.
+                    // Untuk mengubah, user harus input pembelian material baru.
+                    ->disabled()
+                    ->dehydrated(false)  // jangan submit ke DB (readonly display)
+                    ->prefix('Rp')
+                    ->formatStateUsing(fn ($state) => $state !== null ? number_format((float) $state, 0, ',', '.') : '0')
+                    ->helperText('Auto-hitung dari pembelian material (Moving Average Cost). Tidak bisa diedit manual — untuk mengubah, input Pembelian Material baru. Kalau masih 0, artinya belum pernah ada pembelian untuk material ini.'),
 
                 Select::make('satuan')
                     ->label('Satuan')

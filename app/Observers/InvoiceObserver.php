@@ -128,8 +128,59 @@ class InvoiceObserver
 
     private function detachMaterialSale(Invoice $invoice): void
     {
-        MaterialSale::withoutGlobalScopes()
+        $sales = MaterialSale::withoutGlobalScopes()
             ->where('invoice_id', $invoice->id)
-            ->update(['invoice_id' => null]);
+            ->get();
+
+        foreach ($sales as $sale) {
+            // BIZ-01: Restore stock kalau sale punya stock movement OUT.
+            // Sales yang legacy (pre-BIZ01, tanpa stock movement) di-skip.
+            $outMovement = \App\Models\MaterialStockMovement::withoutGlobalScopes()
+                ->where('source_type', MaterialSale::class)
+                ->where('source_id', $sale->id)
+                ->where('movement_type', 'out')
+                ->first();
+
+            if ($outMovement) {
+                $material = \App\Models\Material::withoutGlobalScopes()
+                    ->where('id', $sale->material_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($material) {
+                    $stockBefore = (float) $material->current_stock;
+                    $qtyRestore  = abs((float) $outMovement->qty_change);
+                    $stockAfter  = $stockBefore + $qtyRestore;
+
+                    \DB::table('materials')
+                        ->where('id', $material->id)
+                        ->update([
+                            'current_stock' => $stockAfter,
+                            // MAC tidak berubah — sale tidak affect MAC (hanya purchase)
+                            'updated_at'    => now(),
+                        ]);
+
+                    // Audit trail: adjustment movement restore
+                    \App\Models\MaterialStockMovement::create([
+                        'company_id'   => $material->company_id,
+                        'material_id'  => $material->id,
+                        'movement_type'=> 'adjustment',
+                        'source_type'  => MaterialSale::class,
+                        'source_id'    => $sale->id,
+                        'qty_change'   => $qtyRestore,
+                        'unit_cost'    => (float) $outMovement->unit_cost,
+                        'stock_before' => $stockBefore,
+                        'stock_after'  => $stockAfter,
+                        'mac_before'   => (float) $material->current_mac,
+                        'mac_after'    => (float) $material->current_mac,
+                        'movement_date'=> now()->toDateString(),
+                        'notes'        => "Restore stock void sale {$sale->sale_number} (invoice {$invoice->invoice_number})",
+                        'created_by'   => \Illuminate\Support\Facades\Auth::id(),
+                    ]);
+                }
+            }
+
+            $sale->update(['invoice_id' => null]);
+        }
     }
 }

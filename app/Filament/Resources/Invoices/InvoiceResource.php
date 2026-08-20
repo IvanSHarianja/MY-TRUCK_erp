@@ -20,11 +20,11 @@ class InvoiceResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentText;
 
-    protected static ?string $navigationLabel = 'Invoice & Piutang';
+    protected static ?string $navigationLabel = 'Tagihan & Piutang';
 
-    protected static ?string $modelLabel = 'Invoice';
+    protected static ?string $modelLabel = 'Tagihan';
 
-    protected static ?string $pluralModelLabel = 'Invoice';
+    protected static ?string $pluralModelLabel = 'Tagihan';
 
     protected static ?int $navigationSort = 3;
 
