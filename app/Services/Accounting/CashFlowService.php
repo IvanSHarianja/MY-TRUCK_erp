@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 
 class CashFlowService
 {
-    public function __construct(private TrialBalanceService $trialBalance) {}
+    public function __construct(private CashPositionService $cashPosition) {}
 
     /**
      * Laporan Arus Kas metode langsung.
@@ -34,18 +34,9 @@ class CashFlowService
      */
     public function getReport(int $companyId, int $year, ?int $month = null): array
     {
-        // Sprint 2.5: role-based lookup — dulu hardcoded ke code 111100/111110.
-        // Sekarang cari semua akun dengan role 'cash' atau 'cash_petty' di company ini.
+        // Sprint 2.5: role-based lookup (role cash / cash_petty) + fallback kode standar.
         // User bebas pakai kode akun apapun (contoh 1000000-01 Bank BCA) asal role di-set benar.
-        //
-        // Backward compat: kalau role belum di-set, tetap fallback ke code standar.
-        $kasAccountIds = array_unique(array_merge(
-            Account::idsByRole(\App\Enums\AccountRole::Cash, $companyId),
-            Account::idsByRole(\App\Enums\AccountRole::CashPetty, $companyId),
-            // Fallback untuk data legacy: descendants dari kode standar
-            Account::descendantIds('111100', $companyId, includeSelf: true),
-            Account::descendantIds('111110', $companyId, includeSelf: true),
-        ));
+        $kasAccountIds = Account::cashAccountIds($companyId);
 
         if (empty($kasAccountIds)) {
             return $this->emptyReport();
@@ -109,19 +100,23 @@ class CashFlowService
                 ->join('accounts as a', 'a.id', '=', 'jl.account_id')
                 ->where('jl.journal_entry_id', $row->id)
                 ->whereNotIn('jl.account_id', $kasAccountIds)
-                ->pluck('a.cash_flow_category')
-                ->filter()
-                ->unique()
-                ->toArray();
+                ->pluck('a.cash_flow_category');
 
             // BUG-21: Kalau tidak ada lawan non-kas → jurnal ini transfer
             // antar akun kas (BCA→Mandiri, dll). Skip supaya tidak dobel-count
-            // di laporan Arus Kas (kedua sisi kas bakal iterated).
-            if (empty($lawanCategories)) {
+            // di laporan Arus Kas (kedua sisi kas bakal iterated). Mutasinya
+            // tetap terlihat di bagian Posisi Kas per Rekening.
+            //
+            // Cek "ada line non-kas", BUKAN "ada kategori terisi": akun lawan yang
+            // cash_flow_category-nya kosong (mis. hasil import COA Excel) dulu
+            // ikut dianggap transfer → kas masuk/keluarnya hilang dari laporan.
+            if ($lawanCategories->isEmpty()) {
                 continue;
             }
 
-            $category = $lawanCategories[0];
+            // first() setelah filter() — dulu pakai [0], padahal filter() tidak
+            // me-reset key: kategori [null, 'operasi'] → [1 => 'operasi'] → [0] undefined.
+            $category = $lawanCategories->filter()->first() ?? 'operasi';
 
             if ($category === 'non_kas') {
                 $category = 'operasi';
@@ -140,6 +135,8 @@ class CashFlowService
         $kenaikanBersih = $totalKasMasuk - $totalKasKeluar;
         $saldoAkhir     = $saldoAwal + $kenaikanBersih;
 
+        $posisiKas = $this->cashPosition->getReport($companyId, $year, $month);
+
         return compact(
             'saldoAwal',
             'kasMasukOperasi',   'kasKeluarOperasi',
@@ -147,6 +144,7 @@ class CashFlowService
             'kasMasukPendanaan', 'kasKeluarPendanaan',
             'totalKasMasuk',     'totalKasKeluar',
             'kenaikanBersih',    'saldoAkhir',
+            'posisiKas',
         );
     }
 
@@ -164,6 +162,10 @@ class CashFlowService
             'kasMasukPendanaan'   => 0.0, 'kasKeluarPendanaan' => 0.0,
             'totalKasMasuk'       => 0.0, 'totalKasKeluar'     => 0.0,
             'kenaikanBersih'      => 0.0, 'saldoAkhir'         => 0.0,
+            'posisiKas'           => ['rows' => [], 'total' => [
+                'saldo_awal' => 0.0, 'masuk' => 0.0, 'keluar' => 0.0,
+                'transfer_masuk' => 0.0, 'transfer_keluar' => 0.0, 'saldo_akhir' => 0.0,
+            ]],
         ];
     }
 }

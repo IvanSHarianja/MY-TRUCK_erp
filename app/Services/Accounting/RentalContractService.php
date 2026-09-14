@@ -6,6 +6,7 @@ use App\Models\BusinessUnit;
 use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\RentalContract;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -25,17 +26,12 @@ class RentalContractService
         $date ??= Carbon::today();
         $prefix = sprintf('RN%02d-', $date->format('y'));
 
-        $lastNumber = RentalContract::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('contract_number', 'like', $prefix . '%')
-            ->orderByDesc('contract_number')
-            ->value('contract_number');
-
-        $next = $lastNumber
-            ? ((int) substr($lastNumber, -4)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            RentalContract::withoutGlobalScopes()->where('company_id', $company->id),
+            'contract_number',
+            $prefix,
+            4,
+        );
     }
 
     /**

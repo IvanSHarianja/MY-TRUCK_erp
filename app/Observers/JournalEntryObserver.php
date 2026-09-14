@@ -5,6 +5,10 @@ namespace App\Observers;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Project;
+use App\Models\RentalLog;
+use App\Models\RitLog;
+use App\Services\Accounting\DepreciationService;
+use App\Services\Accounting\JournalService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -17,12 +21,21 @@ use Illuminate\Support\Facades\Log;
  * log.journal_entry_id, dll). Observer ini menutup gap itu: mendeteksi
  * transisi status → 'void' dan rollback counter berdasar pola document_number.
  *
+ * ATURAN: prefix document_number hanya dipakai sebagai ROUTER. Keputusan
+ * cascade selalu lewat link struktural yang tidak bisa diketik user —
+ * FK balik `{tabel}.journal_entry_id` atau `journal_entries.source_*`.
+ * No. Bukti jurnal manual bebas diketik, jadi jurnal koreksi ber-No. Bukti
+ * "DP-PR26-0003" atau "BBK-RL-12" tidak boleh menyentuh dokumen asli.
+ *
  * Pattern yang di-handle:
- *   DP-{project_number}   → decrement Project.dp_diterima
- *   BBK-RL-{log_id}       → nullify RentalLog.journal_entry_id (log jadi
- *                            "orphan"; edit log akan trigger observer repost)
- *   BBK-RT-{log_id}       → nullify RitLog.journal_entry_id
- *   BBK-MT-{log_id}       → nullify AssetMaintenanceLog.journal_entry_id
+ *   DP-{project_number}   → decrement Project.dp_diterima (source = Project)
+ *   BBK-RL-{log_id}       → void DEPUSE log + nullify RentalLog.journal_entry_id
+ *                            (log dicari via FK; log jadi "orphan", edit log
+ *                            akan trigger observer repost)
+ *   BBK-RT-{log_id}       → idem untuk RitLog
+ *   BBK-MT-{log_id}       → nullify AssetMaintenanceLog.journal_entry_id (FK)
+ *   PB*                   → rollback stock + MAC (MaterialPurchase via FK)
+ *   document_type=invoice → sync Invoice.status (Invoice via FK)
  *   HPP-*                 → no-op (sale.journal_entry_id link ke revenue,
  *                            bukan ke HPP journal — tidak ada counter untuk
  *                            di-rollback)
@@ -47,14 +60,9 @@ class JournalEntryObserver
             if (str_starts_with($docNum, 'DP-')) {
                 $this->rollbackProjectDp($entry);
             } elseif (str_starts_with($docNum, 'BBK-RL-')) {
-                // BUG-DEPUSE-01: BBK void tanpa cascade DEPUSE bikin akumulasi
-                // penyusutan usage-based overstate. Void jurnal DEPUSE dulu,
-                // baru nullify link log.
-                $this->cascadeVoidDepuseForLog($entry, 'BBK-RL-');
-                $this->nullifyLogJournal('rental_logs', $entry->id);
+                $this->cascadeLogCostVoid($entry, RentalLog::class);
             } elseif (str_starts_with($docNum, 'BBK-RT-')) {
-                $this->cascadeVoidDepuseForLog($entry, 'BBK-RT-');
-                $this->nullifyLogJournal('rit_logs', $entry->id);
+                $this->cascadeLogCostVoid($entry, RitLog::class);
             } elseif (str_starts_with($docNum, 'BBK-MT-')) {
                 // Maintenance log tidak menghasilkan DEPUSE — no cascade.
                 $this->nullifyLogJournal('asset_maintenance_logs', $entry->id);
@@ -75,19 +83,22 @@ class JournalEntryObserver
 
     /**
      * Kurangi Project.dp_diterima berdasar total_amount jurnal void.
-     * project_number di-extract dari document_number "DP-{project_number}".
+     * Project diambil dari source jurnal (diisi ProjectService::terimaDP),
+     * bukan dari teks "DP-{project_number}" — jurnal manual tidak punya source.
      */
     private function rollbackProjectDp(JournalEntry $entry): void
     {
-        $projectNumber = substr($entry->document_number, 3); // strip "DP-"
+        if (! $entry->sourceIs(Project::class)) {
+            Log::info("JournalEntryObserver: void {$entry->entry_number} ber-No. Bukti DP- tanpa source Project (jurnal manual) — skip rollback DP.");
+            return;
+        }
 
         $project = Project::withoutGlobalScopes()
             ->where('company_id', $entry->company_id)
-            ->where('project_number', $projectNumber)
-            ->first();
+            ->find($entry->source_id);
 
         if (! $project) {
-            Log::info("JournalEntryObserver: DP void {$entry->entry_number} — project {$projectNumber} tidak ditemukan, skip.");
+            Log::info("JournalEntryObserver: DP void {$entry->entry_number} — project #{$entry->source_id} tidak ditemukan, skip.");
             return;
         }
 
@@ -110,8 +121,35 @@ class JournalEntryObserver
     }
 
     /**
-     * BUG-DEPUSE-01: Void semua jurnal DEPUSE-*-{log_id} yang related dengan log
-     * yang jurnal BBK-nya sedang di-void.
+     * Void jurnal biaya operasional log (BBK-RL / BBK-RT).
+     *
+     * Log dicari via FK `journal_entry_id`, bukan dari angka di No. Bukti —
+     * jurnal manual ber-No. Bukti "BBK-RL-12" tidak ter-link ke log mana pun,
+     * jadi tidak ada yang di-cascade.
+     *
+     * @param  class-string<RentalLog|RitLog>  $logClass
+     */
+    private function cascadeLogCostVoid(JournalEntry $bbkEntry, string $logClass): void
+    {
+        $log = $logClass::withoutGlobalScopes()
+            ->where('company_id', $bbkEntry->company_id)
+            ->where('journal_entry_id', $bbkEntry->id)
+            ->first();
+
+        if (! $log) {
+            return;
+        }
+
+        // BUG-DEPUSE-01: BBK void tanpa cascade DEPUSE bikin akumulasi
+        // penyusutan usage-based overstate. Void jurnal DEPUSE dulu,
+        // baru nullify link log.
+        $this->cascadeVoidDepuseForLog($bbkEntry, $log);
+        $this->nullifyLogJournal($log->getTable(), $bbkEntry->id);
+    }
+
+    /**
+     * BUG-DEPUSE-01: Void semua jurnal DEPUSE milik log yang jurnal BBK-nya
+     * sedang di-void.
      *
      * Kenapa perlu:
      * BBK-RL / BBK-RT adalah jurnal biaya operasional per log (BBM, uang jalan).
@@ -120,32 +158,22 @@ class JournalEntryObserver
      * akumulasi penyusutan overstate — biaya usage sudah dibalik tapi penyusutan
      * usage-nya masih tercatat.
      *
-     * Pattern LIKE aman: 'DEPUSE-%-{log_id}' tidak match log_id lain karena log_id
-     * di posisi suffix (mis. cari '-5' tidak match '-15').
+     * DEPUSE dicari via source jurnal = log ini. Pola teks 'DEPUSE-%-{log_id}'
+     * tidak dipakai lagi karena RentalLog dan RitLog ber-id sama saling tangkap.
      *
      * Strategi error: THROW kalau salah satu DEPUSE gagal di-void (mis. period
      * DEPUSE sudah closed). Silent-skip di sini bikin akumulasi overstate senyap.
      * Transaction outer akan rollback BBK void juga — user perlu buka period dulu.
      */
-    private function cascadeVoidDepuseForLog(JournalEntry $bbkEntry, string $prefix): void
+    private function cascadeVoidDepuseForLog(JournalEntry $bbkEntry, RentalLog|RitLog $log): void
     {
-        $logIdStr = substr((string) $bbkEntry->document_number, strlen($prefix));
-        if (! ctype_digit($logIdStr)) {
-            return;
-        }
-        $logId = (int) $logIdStr;
-
-        $depuseJournals = JournalEntry::withoutGlobalScopes()
-            ->where('company_id', $bbkEntry->company_id)
-            ->where('document_number', 'like', sprintf('DEPUSE-%%-%d', $logId))
-            ->where('status', 'posted')
-            ->get();
+        $depuseJournals = app(DepreciationService::class)->postedUsageJournalsFor($log);
 
         if ($depuseJournals->isEmpty()) {
             return;
         }
 
-        $journalService = app(\App\Services\Accounting\JournalService::class);
+        $journalService = app(JournalService::class);
 
         foreach ($depuseJournals as $depuse) {
             try {

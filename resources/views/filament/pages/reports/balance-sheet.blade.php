@@ -5,7 +5,15 @@
         </form>
     </div>
 
-    @php $fmt = fn ($n) => $n == 0 ? '–' : 'Rp ' . number_format($n, 0, ',', '.'); @endphp
+    @php
+        // Semua angka dari BalanceSheetService sudah bertanda (`nilai`). Negatif
+        // ditampilkan dalam kurung — saldo abnormal (mis. rekening bank minus
+        // setelah transfer keluar) harus terlihat, bukan "–".
+        $fmt = fn ($n) => round((float) $n, 2) == 0
+            ? '–'
+            : ($n < 0 ? '(Rp ' . number_format(abs($n), 0, ',', '.') . ')' : 'Rp ' . number_format($n, 0, ',', '.'));
+        $neg = fn ($n) => round((float) $n, 2) < 0 ? 'negative' : '';
+    @endphp
 
     <div class="report-card">
         <div class="report-header">
@@ -25,12 +33,12 @@
                                 <tr>
                                     <td class="code" style="width:80px;">{{ $row->code }}</td>
                                     <td>{{ $row->name }}</td>
-                                    <td class="text-right mono">{{ $fmt($row->saldo_debit) }}</td>
+                                    <td class="text-right mono {{ $neg($row->nilai) }}">{{ $fmt($row->nilai) }}</td>
                                 </tr>
                             @endforeach
                             <tr class="report-row-subtotal">
                                 <td colspan="2" class="text-right">Total Aset Lancar</td>
-                                <td class="text-right mono">{{ $fmt($totalAsetLancar) }}</td>
+                                <td class="text-right mono {{ $neg($totalAsetLancar) }}">{{ $fmt($totalAsetLancar) }}</td>
                             </tr>
 
                             <tr class="report-row-subcategory"><td colspan="3">Aset Tetap</td></tr>
@@ -38,23 +46,17 @@
                                 <tr>
                                     <td class="code">{{ $row->code }}</td>
                                     <td>{{ $row->name }}</td>
-                                    <td class="text-right mono {{ $row->normal_balance === 'kredit' ? 'negative' : '' }}">
-                                        @if ($row->normal_balance === 'kredit')
-                                            ({{ $fmt($row->saldo_kredit) }})
-                                        @else
-                                            {{ $fmt($row->saldo_debit) }}
-                                        @endif
-                                    </td>
+                                    <td class="text-right mono {{ $neg($row->nilai) }}">{{ $fmt($row->nilai) }}</td>
                                 </tr>
                             @endforeach
                             <tr class="report-row-subtotal">
                                 <td colspan="2" class="text-right">Total Aset Tetap (net)</td>
-                                <td class="text-right mono">{{ $fmt($totalAsetTetap) }}</td>
+                                <td class="text-right mono {{ $neg($totalAsetTetap) }}">{{ $fmt($totalAsetTetap) }}</td>
                             </tr>
 
                             <tr class="report-row-total">
                                 <td colspan="2" class="text-right">TOTAL ASET</td>
-                                <td class="text-right mono">{{ $fmt($totalAset) }}</td>
+                                <td class="text-right mono {{ $neg($totalAset) }}">{{ $fmt($totalAset) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -72,14 +74,14 @@
                                 <tr>
                                     <td class="code">{{ $row->code }}</td>
                                     <td>{{ $row->name }}</td>
-                                    <td class="text-right mono">{{ $fmt($row->saldo_kredit) }}</td>
+                                    <td class="text-right mono {{ $neg($row->nilai) }}">{{ $fmt($row->nilai) }}</td>
                                 </tr>
                             @empty
                                 <tr><td colspan="3" class="muted">Tidak ada</td></tr>
                             @endforelse
                             <tr class="report-row-subtotal">
                                 <td colspan="2" class="text-right">Total Lancar</td>
-                                <td class="text-right mono">{{ $fmt($totalKwjbLancar) }}</td>
+                                <td class="text-right mono {{ $neg($totalKwjbLancar) }}">{{ $fmt($totalKwjbLancar) }}</td>
                             </tr>
 
                             <tr class="report-row-subcategory"><td colspan="3">Kewajiban Jangka Panjang</td></tr>
@@ -87,19 +89,19 @@
                                 <tr>
                                     <td class="code">{{ $row->code }}</td>
                                     <td>{{ $row->name }}</td>
-                                    <td class="text-right mono">{{ $fmt($row->saldo_kredit) }}</td>
+                                    <td class="text-right mono {{ $neg($row->nilai) }}">{{ $fmt($row->nilai) }}</td>
                                 </tr>
                             @empty
                                 <tr><td colspan="3" class="muted">Tidak ada</td></tr>
                             @endforelse
                             <tr class="report-row-subtotal">
                                 <td colspan="2" class="text-right">Total Panjang</td>
-                                <td class="text-right mono">{{ $fmt($totalKwjbPanjang) }}</td>
+                                <td class="text-right mono {{ $neg($totalKwjbPanjang) }}">{{ $fmt($totalKwjbPanjang) }}</td>
                             </tr>
 
                             <tr class="report-row-total">
                                 <td colspan="2" class="text-right">TOTAL KEWAJIBAN</td>
-                                <td class="text-right mono">{{ $fmt($totalKewajiban) }}</td>
+                                <td class="text-right mono {{ $neg($totalKewajiban) }}">{{ $fmt($totalKewajiban) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -113,23 +115,17 @@
                                 <tr>
                                     <td class="code">{{ $row->code }}</td>
                                     <td>{{ $row->name }}</td>
-                                    <td class="text-right mono {{ $row->normal_balance === 'debit' ? 'negative' : '' }}">
-                                        @if ($row->normal_balance === 'debit')
-                                            ({{ $fmt($row->saldo_debit) }})
-                                        @else
-                                            {{ $fmt($row->saldo_kredit) }}
-                                        @endif
-                                    </td>
+                                    <td class="text-right mono {{ $neg($row->nilai) }}">{{ $fmt($row->nilai) }}</td>
                                 </tr>
                             @endforeach
                             <tr>
                                 <td></td>
                                 <td class="muted"><em>Laba/Rugi Tahun Berjalan (dari L/R)</em></td>
-                                <td class="text-right mono">{{ $fmt($labaBerjalan) }}</td>
+                                <td class="text-right mono {{ $neg($labaBerjalan) }}">{{ $fmt($labaBerjalan) }}</td>
                             </tr>
                             <tr class="report-row-total">
                                 <td colspan="2" class="text-right">TOTAL EKUITAS</td>
-                                <td class="text-right mono">{{ $fmt($totalEkuitas) }}</td>
+                                <td class="text-right mono {{ $neg($totalEkuitas) }}">{{ $fmt($totalEkuitas) }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -153,5 +149,15 @@
                 </span>
             @endif
         </div>
+
+        @if ($asetLancar->contains(fn ($row) => $row->nilai < 0))
+            <div style="padding:0 1.5rem 1rem;">
+                <div class="report-note">
+                    ⚠️ Ada akun aset lancar bersaldo minus (dalam kurung). Untuk rekening kas/bank, ini biasanya
+                    berarti saldo awal rekening tersebut belum dicatat — input lewat Jurnal Umum dengan
+                    Jenis Bukti <strong>Saldo Awal</strong>.
+                </div>
+            </div>
+        @endif
     </div>
 </x-filament-panels::page>

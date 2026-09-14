@@ -7,6 +7,7 @@ use App\Models\Account;
 use App\Models\BusinessUnit;
 use App\Models\Company;
 use App\Models\JournalEntry;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -225,15 +226,12 @@ class QuickTransactionService
     {
         $prefix = sprintf('%s%02d%02d-', $type->documentPrefix(), $date->format('y'), $date->format('m'));
 
-        $last = JournalEntry::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('document_number', 'like', $prefix . '%')
-            ->orderByDesc('document_number')
-            ->value('document_number');
-
-        $next = $last ? ((int) substr($last, -4)) + 1 : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            JournalEntry::withoutGlobalScopes()->where('company_id', $company->id),
+            'document_number',
+            $prefix,
+            4,
+        );
     }
 
     /**

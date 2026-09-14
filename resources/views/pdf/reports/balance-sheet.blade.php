@@ -1,7 +1,9 @@
 @extends('pdf._layout', ['reportTitle' => 'NERACA (BALANCE SHEET)'])
 
 @php
-    $fmt = fn ($n) => round((float) $n, 2) == 0 ? '–' : number_format($n, 0, ',', '.');
+    // Angka bertanda dari BalanceSheetService — negatif dalam kurung (saldo abnormal harus terlihat).
+    $fmt = fn ($n) => round((float) $n, 2) == 0 ? '–'
+        : ($n < 0 ? '(' . number_format(abs($n), 0, ',', '.') . ')' : number_format($n, 0, ',', '.'));
 @endphp
 
 @section('content')
@@ -16,7 +18,7 @@
         @foreach ($asetLancar as $row)
             <tr>
                 <td class="indent">{{ $row->code }} {{ $row->name }}</td>
-                <td class="text-right">{{ $fmt($row->saldo_debit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr class="subtotal">
@@ -30,7 +32,7 @@
         @foreach ($asetTetap as $row)
             <tr>
                 <td class="indent">{{ $row->code }} {{ $row->name }}</td>
-                <td class="text-right">{{ $row->normal_balance === 'kredit' ? '(' . $fmt($row->saldo_kredit) . ')' : $fmt($row->saldo_debit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr class="subtotal">
@@ -56,7 +58,7 @@
         @foreach ($kwjbLancar as $row)
             <tr>
                 <td class="indent">{{ $row->code }} {{ $row->name }}</td>
-                <td class="text-right">{{ $fmt($row->saldo_kredit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr class="subtotal">
@@ -71,7 +73,7 @@
         @foreach ($kwjbPanjang as $row)
             <tr>
                 <td class="indent">{{ $row->code }} {{ $row->name }}</td>
-                <td class="text-right">{{ $fmt($row->saldo_kredit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr class="subtotal">
@@ -86,7 +88,7 @@
         @foreach ($ekuitas as $row)
             <tr>
                 <td class="indent">{{ $row->code }} {{ $row->name }}</td>
-                <td class="text-right">{{ $row->normal_balance === 'debit' ? '(' . $fmt($row->saldo_debit) . ')' : $fmt($row->saldo_kredit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr>

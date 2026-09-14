@@ -11,6 +11,7 @@ use App\Models\JournalEntryLine;
 use App\Models\Project;
 use App\Models\ProjectProgress;
 use App\Models\ProjectTermin;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -33,17 +34,12 @@ class ProjectService
         $date ??= Carbon::today();
         $prefix = sprintf('PR%02d-', $date->format('y'));
 
-        $lastNumber = Project::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('project_number', 'like', $prefix . '%')
-            ->orderByDesc('project_number')
-            ->value('project_number');
-
-        $next = $lastNumber
-            ? ((int) substr($lastNumber, -4)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            Project::withoutGlobalScopes()->where('company_id', $company->id),
+            'project_number',
+            $prefix,
+            4,
+        );
     }
 
     /**
@@ -77,28 +73,48 @@ class ProjectService
                 'created_by'   => Auth::id() ?? $project->created_by,
             ]);
 
-            // BUG-26: jangan auto-selesai kalau tertagih_pct < 100.
-            // Proyek "selesai" harus juga tertagih penuh — kalau progress 100
-            // tapi masih ada termin belum tagih, user tidak bisa tagih ulang
-            // (tagihTermin butuh isBerjalan). Tolak transisi ke 'selesai'.
-            $canFinish = $progressPct >= 100 && (float) $project->tertagih_pct >= 100 - 0.005;
-            if ($progressPct >= 100 && ! $canFinish) {
-                throw ValidationException::withMessages([
-                    'progress_pct' => sprintf(
-                        'Proyek belum bisa ditutup: progress 100%% tapi tertagih baru %.2f%%. Tagih semua termin dulu.',
-                        (float) $project->tertagih_pct,
-                    ),
-                ]);
-            }
-
-            $project->update([
-                'progress_pct' => $progressPct,
-                'status'       => $canFinish ? 'selesai' : $project->status,
-                'ended_at'     => $canFinish ? Carbon::today() : $project->ended_at,
-            ]);
+            // Progress 100% BOLEH dicapai kapan saja — mengikuti realita
+            // konstruksi (fisik selesai duluan, tagihan final belakangan).
+            // Status hanya auto-transisi ke 'selesai' via syncProjectStatus()
+            // ketika progress DAN tertagih_pct sama-sama sudah 100%.
+            $project->update(['progress_pct' => $progressPct]);
+            $this->syncProjectStatus($project->refresh());
 
             return $history;
         });
+    }
+
+    /**
+     * Sinkronkan status proyek dengan progress_pct + tertagih_pct.
+     *
+     * Rule: status = 'selesai' HANYA jika progress_pct ≥ 100 AND tertagih_pct ≥ 100.
+     * Dua kondisi = dua sisi realita: fisik selesai (progress) + kontraktual selesai
+     * (tertagih penuh). Status baru transisi kalau keduanya terpenuhi.
+     *
+     * Dipanggil dari:
+     *  - updateProgress() setelah progress naik (kasus: 100% dulu, baru tagih final)
+     *  - tagihTermin()   setelah tertagih naik  (kasus: tagih dulu, progress 100% belakangan)
+     *
+     * Idempotent: kalau status sudah 'selesai' atau syarat belum terpenuhi, no-op.
+     */
+    private function syncProjectStatus(Project $project): void
+    {
+        if (! $project->isBerjalan()) {
+            return; // sudah 'selesai' / 'dibatalkan' — tidak transisi ulang
+        }
+
+        $progressDone  = (float) $project->progress_pct  >= 100 - 0.005;
+        $tertagihDone  = (float) $project->tertagih_pct  >= 100 - 0.005;
+
+        if ($progressDone && $tertagihDone) {
+            Project::withoutGlobalScopes()
+                ->where('id', $project->id)
+                ->update([
+                    'status'     => 'selesai',
+                    'ended_at'   => Carbon::today(),
+                    'updated_at' => now(),
+                ]);
+        }
     }
 
     /**
@@ -214,6 +230,10 @@ class ProjectService
                     'entry_date'       => $dpDate,
                     'document_number'  => 'DP-' . $project->project_number,
                     'document_type'    => 'bkm',
+                    // Link struktural untuk cascade void (rollback dp_diterima) —
+                    // No. Bukti bisa diketik bebas di jurnal manual, source tidak.
+                    'source_type'      => $project->getMorphClass(),
+                    'source_id'        => $project->id,
                     'business_unit_id' => optional($bongUnit)->id,
                     'description'      => 'Uang muka proyek ' . $project->project_number
                         . ' — ' . $project->name
@@ -398,6 +418,10 @@ class ProjectService
             Project::withoutGlobalScopes()
                 ->where('id', $project->id)
                 ->increment('tertagih_pct', $terminPct);
+
+            // Auto-close kalau tagih terakhir bikin tertagih 100% DAN progress sudah 100%.
+            // Support workflow: progress 100% dulu → tagih final → project auto 'selesai'.
+            $this->syncProjectStatus($project->refresh());
 
             return $invoice;
         });

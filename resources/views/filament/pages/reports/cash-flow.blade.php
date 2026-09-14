@@ -94,4 +94,6 @@
             </div>
         </div>
     </div>
+
+    @include('filament.pages.reports.partials._posisi-kas', ['saldoAkhirLaporan' => $saldoAkhir])
 </x-filament-panels::page>

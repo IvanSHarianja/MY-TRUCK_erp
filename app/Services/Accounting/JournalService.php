@@ -7,6 +7,7 @@ use App\Models\AccountingPeriod;
 use App\Models\Company;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -17,23 +18,18 @@ class JournalService
 {
     /**
      * Auto-generate nomor jurnal per company per bulan.
-     * Format: J{YY}{MM}-{NNN}, contoh: J2606-001
+     * Format: J{YY}{MM}-{NNN}, contoh: J2606-001 (lanjut J2606-1000 setelah 999)
      */
     public function generateEntryNumber(Company $company, CarbonInterface $date): string
     {
         $prefix = sprintf('J%02d%02d-', $date->format('y'), $date->format('m'));
 
-        $lastNumber = JournalEntry::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('entry_number', 'like', $prefix . '%')
-            ->orderByDesc('entry_number')
-            ->value('entry_number');
-
-        $next = $lastNumber
-            ? ((int) substr($lastNumber, -3)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 3, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            JournalEntry::withoutGlobalScopes()->where('company_id', $company->id),
+            'entry_number',
+            $prefix,
+            3,
+        );
     }
 
     /**

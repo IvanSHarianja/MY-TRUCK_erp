@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages\Reports;
 
+use App\Filament\Pages\Reports\Concerns\RequiresReportPermission;
 use App\Models\BusinessUnit;
 use App\Services\Accounting\IncomeStatementByAssetService;
 use App\Services\Accounting\IncomeStatementMatrixService;
@@ -30,6 +31,7 @@ use Filament\Support\Icons\Heroicon;
 class IncomeStatementUnified extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RequiresReportPermission;
 
     protected string $view = 'filament.pages.reports.income-statement-unified';
 
@@ -115,6 +117,7 @@ class IncomeStatementUnified extends Page implements HasForms
                         ]),
                     };
                 })
+                ->visible(fn (): bool => static::canExportPdf())
                 ->openUrlInNewTab(),
         ];
     }

@@ -135,4 +135,6 @@
     Format ini mirror layout Excel LAK operasional. Untuk format standar PSAK
     (Operasi/Investasi/Pendanaan), lihat laporan "Arus Kas (Metode Langsung)".
 </div>
+
+@include('pdf.reports.partials._posisi-kas', ['saldoAkhirLaporan' => $saldoAkhir])
 @endsection

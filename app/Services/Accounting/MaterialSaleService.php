@@ -12,6 +12,7 @@ use App\Models\JournalEntryLine;
 use App\Models\Material;
 use App\Models\MaterialSale;
 use App\Models\MaterialStockMovement;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -34,17 +35,12 @@ class MaterialSaleService
     {
         $prefix = sprintf('PJ%02d%02d-', $date->format('y'), $date->format('m'));
 
-        $lastNumber = MaterialSale::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('sale_number', 'like', $prefix . '%')
-            ->orderByDesc('sale_number')
-            ->value('sale_number');
-
-        $next = $lastNumber
-            ? ((int) substr($lastNumber, -4)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            MaterialSale::withoutGlobalScopes()->where('company_id', $company->id),
+            'sale_number',
+            $prefix,
+            4,
+        );
     }
 
     /**

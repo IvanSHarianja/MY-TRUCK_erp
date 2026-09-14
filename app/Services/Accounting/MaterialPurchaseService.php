@@ -10,6 +10,7 @@ use App\Models\Material;
 use App\Models\MaterialPurchase;
 use App\Models\MaterialStockMovement;
 use App\Models\Vendor;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -47,17 +48,12 @@ class MaterialPurchaseService
     {
         $prefix = sprintf('PB%02d%02d-', $date->format('y'), $date->format('m'));
 
-        $lastNumber = MaterialPurchase::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('purchase_number', 'like', $prefix . '%')
-            ->orderByDesc('purchase_number')
-            ->value('purchase_number');
-
-        $next = $lastNumber
-            ? ((int) substr($lastNumber, -4)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            MaterialPurchase::withoutGlobalScopes()->where('company_id', $company->id),
+            'purchase_number',
+            $prefix,
+            4,
+        );
     }
 
     /**

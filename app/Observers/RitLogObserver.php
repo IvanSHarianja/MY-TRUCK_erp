@@ -238,20 +238,17 @@ class RitLogObserver
                 . (optional($log->armadaContract)->contract_number
                     ? ' / ' . $log->armadaContract->contract_number
                     : ''),
+            source: $log,
         );
     }
 
     /**
-     * BIZ-03: Void semua jurnal DEPUSE untuk log ini. Pattern LIKE menangkap
-     * kasus edit yang mengganti asset_id.
+     * BIZ-03: Void semua jurnal DEPUSE untuk log ini. Lookup via source jurnal —
+     * mencakup edit asset_id dan tidak menangkap DEPUSE milik RentalLog ber-id sama.
      */
     private function voidDepreciationJournalsForLog(RitLog $log): void
     {
-        $journals = JournalEntry::withoutGlobalScopes()
-            ->where('company_id', $log->company_id)
-            ->where('document_number', 'like', sprintf('DEPUSE-%%-%d', $log->id))
-            ->where('status', 'posted')
-            ->get();
+        $journals = $this->depreciationService->postedUsageJournalsFor($log);
 
         foreach ($journals as $journal) {
             try {

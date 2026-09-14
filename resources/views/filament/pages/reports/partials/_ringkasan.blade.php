@@ -1,5 +1,11 @@
 @php
-    $fmt = fn ($n) => $n == 0 ? '–' : 'Rp ' . number_format($n, 0, ',', '.');
+    // `nilai` dari IncomeStatementService bertanda: pendapatan (+) menambah, beban (+)
+    // mengurangi laba. Beban ditampilkan sebagai -nilai → dalam kurung; beban
+    // bersaldo kredit (koreksi) otomatis tampil tanpa kurung.
+    $fmt = fn ($n) => round((float) $n, 2) == 0
+        ? '–'
+        : ($n < 0 ? '(Rp ' . number_format(abs($n), 0, ',', '.') . ')' : 'Rp ' . number_format($n, 0, ',', '.'));
+    $neg = fn ($n) => round((float) $n, 2) < 0 ? 'negative' : '';
     $pct = fn ($n) => $totalPendapatan > 0 ? round($n / $totalPendapatan * 100, 1) . '%' : '–';
 @endphp
 
@@ -27,13 +33,13 @@
                 <tr>
                     <td class="code">{{ $row->code }}</td>
                     <td>{{ $row->name }}</td>
-                    <td class="text-right mono">{{ $fmt($row->saldo_kredit) }}</td>
-                    <td class="text-right muted">{{ $pct($row->saldo_kredit) }}</td>
+                    <td class="text-right mono {{ $neg($row->nilai) }}">{{ $fmt($row->nilai) }}</td>
+                    <td class="text-right muted">{{ $pct($row->nilai) }}</td>
                 </tr>
             @endforeach
             <tr class="report-row-subtotal">
                 <td colspan="2" class="text-right">Total Pendapatan</td>
-                <td class="text-right mono">{{ $fmt($totalPendapatan) }}</td>
+                <td class="text-right mono {{ $neg($totalPendapatan) }}">{{ $fmt($totalPendapatan) }}</td>
                 <td class="text-right">100%</td>
             </tr>
 
@@ -45,22 +51,22 @@
                 <tr>
                     <td class="code">{{ $row->code }}</td>
                     <td>{{ $row->name }}</td>
-                    <td class="text-right mono negative">({{ $fmt($row->saldo_debit) }})</td>
-                    <td class="text-right muted">{{ $pct($row->saldo_debit) }}</td>
+                    <td class="text-right mono {{ $neg(-$row->nilai) }}">{{ $fmt(-$row->nilai) }}</td>
+                    <td class="text-right muted">{{ $pct($row->nilai) }}</td>
                 </tr>
             @empty
                 <tr><td colspan="4" class="muted">Belum ada beban HPP</td></tr>
             @endforelse
             <tr class="report-row-subtotal">
                 <td colspan="2" class="text-right">Total HPP</td>
-                <td class="text-right mono negative">({{ $fmt($totalHpp) }})</td>
+                <td class="text-right mono {{ $neg(-$totalHpp) }}">{{ $fmt(-$totalHpp) }}</td>
                 <td class="text-right">{{ $pct($totalHpp) }}</td>
             </tr>
 
             {{-- III. LABA KOTOR --}}
             <tr class="report-row-total">
                 <td colspan="2" class="text-right">III. Laba Kotor</td>
-                <td class="text-right mono">{{ $fmt($labaKotor) }}</td>
+                <td class="text-right mono {{ $neg($labaKotor) }}">{{ $fmt($labaKotor) }}</td>
                 <td class="text-right">{{ $pct($labaKotor) }}</td>
             </tr>
 
@@ -72,22 +78,22 @@
                 <tr>
                     <td class="code">{{ $row->code }}</td>
                     <td>{{ $row->name }}</td>
-                    <td class="text-right mono negative">({{ $fmt($row->saldo_debit) }})</td>
-                    <td class="text-right muted">{{ $pct($row->saldo_debit) }}</td>
+                    <td class="text-right mono {{ $neg(-$row->nilai) }}">{{ $fmt(-$row->nilai) }}</td>
+                    <td class="text-right muted">{{ $pct($row->nilai) }}</td>
                 </tr>
             @empty
                 <tr><td colspan="4" class="muted">Belum ada beban operasional</td></tr>
             @endforelse
             <tr class="report-row-subtotal">
                 <td colspan="2" class="text-right">Total Beban Operasional</td>
-                <td class="text-right mono negative">({{ $fmt($totalBebanOp) }})</td>
+                <td class="text-right mono {{ $neg(-$totalBebanOp) }}">{{ $fmt(-$totalBebanOp) }}</td>
                 <td class="text-right">{{ $pct($totalBebanOp) }}</td>
             </tr>
 
             {{-- V. LABA BERSIH --}}
             <tr class="report-row-grand">
                 <td colspan="2" class="text-right">V. Laba Bersih Sebelum Pajak</td>
-                <td class="text-right mono">{{ $fmt($labaBersih) }}</td>
+                <td class="text-right mono {{ $neg($labaBersih) }}">{{ $fmt($labaBersih) }}</td>
                 <td class="text-right">{{ $marginLaba }}%</td>
             </tr>
         </tbody>

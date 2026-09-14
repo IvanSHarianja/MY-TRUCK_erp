@@ -141,6 +141,25 @@ class Account extends Model
     }
 
     /**
+     * Semua akun kas & bank (role cash / cash_petty) + fallback descendant kode
+     * standar 111100 / 111110 untuk data legacy yang role-nya belum di-set.
+     *
+     * Satu definisi untuk semua laporan kas (Arus Kas, LAK, Posisi Kas) —
+     * kalau berbeda, total antar laporan tidak bisa direkonsiliasi.
+     *
+     * @return array<int>
+     */
+    public static function cashAccountIds(int $companyId): array
+    {
+        return array_values(array_unique(array_merge(
+            static::idsByRole(\App\Enums\AccountRole::Cash, $companyId),
+            static::idsByRole(\App\Enums\AccountRole::CashPetty, $companyId),
+            static::descendantIds('111100', $companyId, includeSelf: true),
+            static::descendantIds('111110', $companyId, includeSelf: true),
+        )));
+    }
+
+    /**
      * Sub-kategori valid per kategori — single source of truth.
      *
      * KENAPA method statik dan bukan enum kelas terpisah:

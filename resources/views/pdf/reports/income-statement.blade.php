@@ -1,7 +1,9 @@
 @extends('pdf._layout', ['reportTitle' => 'LAPORAN LABA RUGI (INCOME STATEMENT)'])
 
 @php
-    $fmt = fn ($n) => round((float) $n, 2) == 0 ? '–' : number_format($n, 0, ',', '.');
+    // `nilai` bertanda dari IncomeStatementService — negatif dalam kurung.
+    $fmt = fn ($n) => round((float) $n, 2) == 0 ? '–'
+        : ($n < 0 ? '(' . number_format(abs($n), 0, ',', '.') . ')' : number_format($n, 0, ',', '.'));
 @endphp
 
 @section('content')
@@ -14,7 +16,7 @@
         @foreach ($pendapatan as $row)
             <tr>
                 <td class="indent">{{ $row->code }} — {{ $row->name }}</td>
-                <td class="text-right">{{ $fmt($row->saldo_kredit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr class="subtotal">
@@ -30,12 +32,12 @@
         @foreach ($hpp as $row)
             <tr>
                 <td class="indent">{{ $row->code }} — {{ $row->name }}</td>
-                <td class="text-right">{{ $fmt($row->saldo_debit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr class="subtotal">
             <td>Total HPP</td>
-            <td class="text-right">(Rp {{ $fmt($totalHpp) }})</td>
+            <td class="text-right">Rp {{ $fmt(-$totalHpp) }}</td>
         </tr>
         @endif
 
@@ -53,12 +55,12 @@
         @foreach ($bebanOp as $row)
             <tr>
                 <td class="indent">{{ $row->code }} — {{ $row->name }}</td>
-                <td class="text-right">{{ $fmt($row->saldo_debit) }}</td>
+                <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
         <tr class="subtotal">
             <td>Total Beban Operasional</td>
-            <td class="text-right">(Rp {{ $fmt($totalBebanOp) }})</td>
+            <td class="text-right">Rp {{ $fmt(-$totalBebanOp) }}</td>
         </tr>
         @endif
 

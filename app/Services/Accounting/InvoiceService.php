@@ -9,6 +9,7 @@ use App\Models\Company;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -29,17 +30,12 @@ class InvoiceService
     {
         $prefix = sprintf('INV%02d%02d-', $date->format('y'), $date->format('m'));
 
-        $lastNumber = Invoice::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('invoice_number', 'like', $prefix . '%')
-            ->orderByDesc('invoice_number')
-            ->value('invoice_number');
-
-        $next = $lastNumber
-            ? ((int) substr($lastNumber, -4)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            Invoice::withoutGlobalScopes()->where('company_id', $company->id),
+            'invoice_number',
+            $prefix,
+            4,
+        );
     }
 
     /**

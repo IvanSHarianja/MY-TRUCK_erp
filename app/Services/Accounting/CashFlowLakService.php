@@ -27,6 +27,8 @@ use Illuminate\Support\Facades\DB;
  */
 class CashFlowLakService
 {
+    public function __construct(private CashPositionService $cashPosition) {}
+
     /**
      * @return array{
      *   saldoAwal: float,
@@ -125,11 +127,17 @@ class CashFlowLakService
         $totalPengeluaran = array_sum(array_column($pengeluaran, 'total'));
         $saldoAkhir = $saldoAwal + $totalPenerimaan - $totalPengeluaran;
 
+        // Posisi riil per rekening. Bisa berbeda dari saldoAkhir LAK kalau ada
+        // transaksi kas dengan akun lawan yang role-nya belum ada di lak_mapping —
+        // view menampilkan selisihnya supaya tidak hilang diam-diam.
+        $posisiKas = $this->cashPosition->getReport($companyId, $year, $month);
+
         return compact(
             'saldoAwal',
             'penerimaan', 'totalPenerimaan',
             'pengeluaran', 'totalPengeluaran',
             'saldoAkhir',
+            'posisiKas',
         );
     }
 
@@ -204,17 +212,11 @@ class CashFlowLakService
     }
 
     /**
-     * ID semua akun kas + kas kecil untuk tenant ini.
-     * Reuse pola CashFlowService — role-based + fallback code standar.
+     * ID semua akun kas + kas kecil untuk tenant ini — definisi bersama semua laporan kas.
      */
     private function kasAccountIds(int $companyId): array
     {
-        return array_unique(array_merge(
-            Account::idsByRole(AccountRole::Cash, $companyId),
-            Account::idsByRole(AccountRole::CashPetty, $companyId),
-            Account::descendantIds('111100', $companyId, includeSelf: true),
-            Account::descendantIds('111110', $companyId, includeSelf: true),
-        ));
+        return Account::cashAccountIds($companyId);
     }
 
     /**
@@ -238,6 +240,10 @@ class CashFlowLakService
             'pengeluaran'      => [],
             'totalPengeluaran' => 0.0,
             'saldoAkhir'       => 0.0,
+            'posisiKas'        => ['rows' => [], 'total' => [
+                'saldo_awal' => 0.0, 'masuk' => 0.0, 'keluar' => 0.0,
+                'transfer_masuk' => 0.0, 'transfer_keluar' => 0.0, 'saldo_akhir' => 0.0,
+            ]],
         ];
     }
 }

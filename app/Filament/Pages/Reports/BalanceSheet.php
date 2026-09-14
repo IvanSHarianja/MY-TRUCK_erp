@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages\Reports;
 
+use App\Filament\Pages\Reports\Concerns\RequiresReportPermission;
 use App\Services\Accounting\BalanceSheetService;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -16,6 +17,7 @@ use Filament\Support\Icons\Heroicon;
 class BalanceSheet extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RequiresReportPermission;
 
     protected string $view = 'filament.pages.reports.balance-sheet';
 
@@ -42,6 +44,7 @@ class BalanceSheet extends Page implements HasForms
                     'year'   => $this->year,
                     'month'  => $this->month,
                 ]))
+                ->visible(fn (): bool => static::canExportPdf())
                 ->openUrlInNewTab(),
         ];
     }

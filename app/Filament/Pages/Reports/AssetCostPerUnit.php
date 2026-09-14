@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages\Reports;
 
+use App\Filament\Pages\Reports\Concerns\RequiresReportPermission;
 use App\Models\BusinessUnit;
 use App\Services\Accounting\AssetCostPerUnitService;
 use BackedEnum;
@@ -21,6 +22,7 @@ use Filament\Support\Icons\Heroicon;
 class AssetCostPerUnit extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RequiresReportPermission;
 
     protected string $view = 'filament.pages.reports.asset-cost-per-unit';
 
@@ -73,6 +75,7 @@ class AssetCostPerUnit extends Page implements HasForms
                     'business_unit_id' => $this->businessUnitId,
                     'only_losing'      => $this->onlyLosing ? 1 : 0,
                 ]))
+                ->visible(fn (): bool => static::canExportPdf())
                 ->openUrlInNewTab(),
         ];
     }

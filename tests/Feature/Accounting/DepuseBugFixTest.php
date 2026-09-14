@@ -3,6 +3,7 @@
 namespace Tests\Feature\Accounting;
 
 use App\Enums\DepreciationMethod;
+use App\Models\ArmadaContract;
 use App\Models\Asset;
 use App\Models\JournalEntry;
 use App\Models\RentalContract;
@@ -28,6 +29,11 @@ class DepuseBugFixTest extends TestCase
     // BUG-DEPUSE-01: Cascade void DEPUSE saat BBK di-void
     // ================================================================
 
+    // Catatan: dua test cascade di bawah dulu memakai jurnal MANUAL ber-No. Bukti
+    // "BBK-RL-42" / "DEPUSE-x-42" untuk mensimulasikan log. Sejak cascade lewat
+    // link struktural (FK log.journal_entry_id + journal_entries.source_*), jurnal
+    // manual sengaja tidak ter-cascade — test memakai RentalLog/RitLog asli.
+
     public function test_void_bbk_rl_cascades_void_to_related_depuse(): void
     {
         $company = $this->createTenant();
@@ -40,38 +46,39 @@ class DepuseBugFixTest extends TestCase
             'salvage_value'     => 50_000_000,
         ]);
 
-        $logId = 42; // Simulasi RentalLog #42 — dua jurnal ini "seakan" datang dari log yang sama.
+        $contract = RentalContract::create([
+            'company_id'          => $company->id,
+            'contract_number'     => 'RC-' . strtoupper(bin2hex(random_bytes(3))),
+            'client_id'           => $this->createClient($company)->id,
+            'asset_id'            => $asset->id,
+            'tipe_rental'         => 'all_in', // ada biaya BBM → BBK-RL
+            'bbm_liter_per_jam'   => 10,
+            'harga_bbm_per_liter' => 10_000,
+            'tarif_per_jam'       => 500_000,
+            'status'              => 'aktif',
+            'started_at'          => '2026-01-01',
+            'created_by'          => $user->id,
+        ]);
 
-        // Bikin jurnal BBK-RL-42 (biaya operasional)
-        $bbk = $this->makeJournalEntry(
-            $company,
-            [
-                ['account_id' => $this->postableAccount($company, '551100')->id, 'debit' => 500_000, 'kredit' => 0],
-                ['account_id' => $this->postableAccount($company, '111100')->id, 'debit' => 0,       'kredit' => 500_000],
-            ],
-            ['document_number' => "BBK-RL-{$logId}", 'document_type' => 'bkk'],
-        );
-        app(JournalService::class)->post($bbk);
+        $log = RentalLog::create([
+            'company_id'         => $company->id,
+            'rental_contract_id' => $contract->id,
+            'asset_id'           => $asset->id,
+            'log_date'           => Carbon::today()->toDateString(),
+            'hm_awal'            => 100,
+            'hm_akhir'           => 110,
+            'jam_kerja'          => 10,
+            'created_by'         => $user->id,
+        ])->refresh();
 
-        // Bikin jurnal DEPUSE-{asset}-42 (penyusutan usage-based)
-        $depuse = $this->makeJournalEntry(
-            $company,
-            [
-                ['account_id' => $this->postableAccount($company, '552100')->id, 'asset_id' => $asset->id, 'debit' => 400_000, 'kredit' => 0],
-                ['account_id' => $this->postableAccount($company, '112105')->id, 'asset_id' => $asset->id, 'debit' => 0,       'kredit' => 400_000],
-            ],
-            ['document_number' => "DEPUSE-{$asset->id}-{$logId}", 'document_type' => 'penyusutan'],
-        );
-        app(JournalService::class)->post($depuse);
-
-        $this->assertSame('posted', $bbk->refresh()->status);
-        $this->assertSame('posted', $depuse->refresh()->status);
+        $bbk    = JournalEntry::withoutGlobalScopes()->findOrFail($log->journal_entry_id);
+        $depuse = $this->depuseFor($asset, $log->id);
+        $this->assertSame('posted', $depuse->status);
 
         // Aksi: void BBK-RL — cascade DEPUSE harus ikut jalan
         app(JournalService::class)->void($bbk, 'Test cascade');
 
-        $depuse->refresh();
-        $this->assertSame('void', $depuse->status, 'DEPUSE harus ikut void saat BBK-RL di-void (cascade)');
+        $this->assertSame('void', $depuse->refresh()->status, 'DEPUSE harus ikut void saat BBK-RL di-void (cascade)');
     }
 
     public function test_void_bbk_rt_cascades_void_to_related_depuse(): void
@@ -86,27 +93,32 @@ class DepuseBugFixTest extends TestCase
             'salvage_value'    => 40_000_000,
         ]);
 
-        $logId = 77;
+        $contract = ArmadaContract::create([
+            'company_id'          => $company->id,
+            'contract_number'     => 'AC-' . strtoupper(bin2hex(random_bytes(3))),
+            'client_id'           => $this->createClient($company)->id,
+            'tipe_kontrak'        => 'all_in', // ada biaya BBM → BBK-RT
+            'bbm_liter_per_rit'   => 20,
+            'harga_bbm_per_liter' => 10_000,
+            'route_description'   => 'Quarry - Proyek',
+            'tarif_per_rit'       => 300_000,
+            'status'              => 'aktif',
+            'started_at'          => '2026-01-01',
+            'created_by'          => $user->id,
+        ]);
 
-        $bbk = $this->makeJournalEntry(
-            $company,
-            [
-                ['account_id' => $this->postableAccount($company, '551100')->id, 'debit' => 300_000, 'kredit' => 0],
-                ['account_id' => $this->postableAccount($company, '111100')->id, 'debit' => 0,       'kredit' => 300_000],
-            ],
-            ['document_number' => "BBK-RT-{$logId}", 'document_type' => 'bkk'],
-        );
-        app(JournalService::class)->post($bbk);
+        $log = RitLog::create([
+            'company_id'         => $company->id,
+            'armada_contract_id' => $contract->id,
+            'asset_id'           => $asset->id,
+            'log_date'           => Carbon::today()->toDateString(),
+            'rit_count'          => 5,
+            'created_by'         => $user->id,
+        ])->refresh();
 
-        $depuse = $this->makeJournalEntry(
-            $company,
-            [
-                ['account_id' => $this->postableAccount($company, '552100')->id, 'asset_id' => $asset->id, 'debit' => 250_000, 'kredit' => 0],
-                ['account_id' => $this->postableAccount($company, '112105')->id, 'asset_id' => $asset->id, 'debit' => 0,       'kredit' => 250_000],
-            ],
-            ['document_number' => "DEPUSE-{$asset->id}-{$logId}", 'document_type' => 'penyusutan'],
-        );
-        app(JournalService::class)->post($depuse);
+        $bbk    = JournalEntry::withoutGlobalScopes()->findOrFail($log->journal_entry_id);
+        $depuse = $this->depuseFor($asset, $log->id);
+        $this->assertSame('posted', $depuse->status);
 
         app(JournalService::class)->void($bbk, 'Test cascade');
 
@@ -115,7 +127,8 @@ class DepuseBugFixTest extends TestCase
 
     public function test_cascade_depuse_only_matches_exact_log_suffix(): void
     {
-        // Regression guard: cari suffix -5 tidak boleh match -15 (log_id berbeda)
+        // Regression guard: cari suffix -5 tidak boleh match -15 (log_id berbeda).
+        // Sejak cascade via link struktural, jurnal manual "BBK-RL-5" tidak cascade sama sekali.
         $company = $this->createTenant();
         $user    = $this->createTenantUser($company);
         $this->actingAsTenant($user, $company);
@@ -340,6 +353,14 @@ class DepuseBugFixTest extends TestCase
             'purchase_date'       => Carbon::now()->subMonths(2)->startOfMonth()->toDateString(),
             'status'              => 'aktif',
         ], $overrides));
+    }
+
+    private function depuseFor(Asset $asset, int $logId): JournalEntry
+    {
+        return JournalEntry::withoutGlobalScopes()
+            ->where('company_id', $asset->company_id)
+            ->where('document_number', sprintf('DEPUSE-%d-%d', $asset->id, $logId))
+            ->firstOrFail();
     }
 
     private function makeRentalContract($company, Asset $asset, array $overrides = []): RentalContract

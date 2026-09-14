@@ -15,7 +15,7 @@
 ```bash
 # 1. Verifikasi state
 cd /d/laragon/www/my-truck
-php artisan test --testsuite=Feature   # target 263+ pass, ~60 detik
+php artisan test --testsuite=Feature   # target 321+ pass, ~60 detik
 git log --oneline -15                  # lihat 15 commit terakhir untuk context
 
 # 2. Cek struktur (kalau perlu)
@@ -32,7 +32,7 @@ ls app/Policies/                       # 17 policy
 |---|---|---|---|
 | RENT | Rental Alat Berat | Sewa per jam kerja (all-in / semi / alat_saja) | `BBK-RL-*` cost + `DEPUSE-*` (kalau per_hour) |
 | ARMD | Jasa Angkutan Dump Truck | Tarif per rit (ritase) | `BBK-RT-*` cost + `DEPUSE-*` (kalau per_rit) |
-| MATL | Penjualan Material | Sale material (m³) dengan HPP | `MS-*` + `HPP-*` |
+| MATL | Penjualan Material | Sale material (m³) dengan HPP | `PJ*` + `HPP-*` |
 | BONG | Borongan Pengurugan | Kontrak proyek dengan DP + termin progress | `DP-*` DP + Invoice termin |
 | UMUM | Kategori lain-lain | Tidak spesifik lini | default fallback |
 
@@ -92,10 +92,32 @@ Race-safe dengan retry pada `UniqueConstraintViolationException` (entry_number b
 | `PB{YYMM}-{NNNN}` | Material Purchase (BIZ-01) | Cascade: rollback stock + recompute MAC |
 | `HPP-{sale_number}` | HPP saat sale | No cascade needed |
 | `DP-{project_number}` | Project DP | Decrement project.dp_diterima |
-| `MS-{sale_id}` | Material sale revenue | Cascade lewat invoice |
+| `PJ{YYMM}-{NNNN}` | Material sale revenue (sale_number) | Cascade lewat invoice |
 | `REV-*` | Jurnal pembalik (auto saat void) | — |
 
-Kalau tambah pattern baru, update `JournalEntryObserver::updated()` untuk handle cascade void.
+**Aturan cascade void (wajib):** prefix No. Bukti hanya ROUTER — keputusan cascade
+harus lewat link struktural yang tidak bisa diketik user:
+- FK balik `{tabel}.journal_entry_id` (invoice, payment, purchase, RentalLog/RitLog/MaintenanceLog), atau
+- `journal_entries.source_type` + `source_id` — diisi auto-journal yang tidak punya FK balik:
+  DP proyek (→ `Project`) dan DEPUSE (→ `RentalLog`/`RitLog`). Query: `JournalEntry::fromSource($model)`.
+
+Alasan: No. Bukti jurnal manual bisa diketik bebas (jurnal koreksi "DP-PR26-0003"
+dulu ikut memotong `dp_diterima`), dan RentalLog #N / RitLog #N sama-sama menghasilkan
+`DEPUSE-{asset}-N`. Kalau tambah pattern baru: update `JournalEntryObserver::updated()`,
+pastikan ada FK/source, dan tambahkan formatnya ke `JournalEntry::SYSTEM_DOCUMENT_PATTERNS`
+(form jurnal manual menolak format tersebut).
+
+**Laporan dari ledger (wajib):**
+- Filter jurnal: `status = 'posted'` **DAN** `document_type != 'pembalik'`. Void = jurnal asli jadi `void`
+  + jurnal pembalik `posted`; kalau pembalik ikut dihitung, efek void jadi terbalik (Kas 1jt void → -1jt).
+- Neraca & Laba Rugi menampilkan `$row->nilai` (bertanda per seksi), BUKAN `saldo_debit`/`saldo_kredit` —
+  saldo abnormal (rekening bank minus, retur pendapatan) harus terlihat dan ikut total.
+- Akun kas untuk semua laporan kas: `Account::cashAccountIds($companyId)`. Posisi per rekening:
+  `CashPositionService` (transfer antar rekening tampil di sini; Arus Kas PSAK tetap tidak menghitungnya).
+
+**Penomoran dokumen:** semua generator nomor (`J`, `INV`, `PAY`, `PB`, `PJ`, `PR`, `RN`, `KA`,
+quick tx) wajib lewat `App\Support\DocumentSequence::next()` — urutan numerik, tidak mentok
+di 999/9999. Jangan `orderByDesc('nomor')` + `substr(-N)` (urutan string: "999" > "1000").
 
 ## Role & Permission System
 
@@ -107,6 +129,7 @@ Kalau tambah pattern baru, update `JournalEntryObserver::updated()` untuk handle
 - **User helpers**: `$user->canIn($tenant, $permission)` / `$user->canCurrent($permission)` / `$user->roleIn($tenant)`
 - **Policies**: 17 file di `app/Policies/` (auto-integrated Filament)
 - **UI**: `Role Akses` page (menu paling bawah sidebar, owner-only) — checkbox toggle langsung save
+- **Laporan**: 11 halaman `Pages/Reports/*` pakai trait `RequiresReportPermission` (`ReportsView` → akses halaman, `ReportsExportPdf` → tombol PDF). Route `/pdf/{tenant}/*` cek keduanya di `EnsurePdfTenantAccess`. Halaman laporan baru WAJIB pakai trait ini.
 
 **Aturan pokok:**
 - Owner selalu semua permission — tidak bisa dikutik (safety)
@@ -180,7 +203,7 @@ if ($existing) return $existing;  // idempotent
 
 - **Test DB**: SQLite in-memory (defined di `phpunit.xml`)
 - **Base class**: `Tests\TestCase` punya helper: `createTenant()`, `createTenantUser()`, `actingAsTenant()`, `makeJournalEntry()`, `postableAccount()`, `businessUnit()`, `createClient()`, `makeDraftInvoice()`
-- **Run**: `php artisan test --testsuite=Feature` (~60 detik untuk 263+ test)
+- **Run**: `php artisan test --testsuite=Feature` (~60 detik untuk 321+ test)
 - **Convention**: setiap fitur baru minimal 2-3 feature test. Untuk service accounting minimum test: happy path + edge case (void, race, negative)
 
 ## Skema Data Kunci
@@ -232,7 +255,7 @@ if ($existing) return $existing;  // idempotent
   - Cash dropdown hanya sub-akun (hierarki paksa)
   - Berbagai UX fix
 
-**Total sekarang**: 263 test, 1089 assertion, zero regression.
+**Total sekarang**: 321 test, 1290 assertion, zero regression (per 2026-09-14).
 
 ## Gap Belum Selesai (untuk kesadaran)
 
@@ -309,5 +332,5 @@ Sekarang siap kerja. Untuk task spesifik:
 1. Identifikasi service/model yang terkait
 2. Baca file tersebut fully (bukan grep parsial)
 3. Ikuti convention di atas (rupiah cast, filament namespace, auto-journal pattern)
-4. Sebelum submit, jalankan `php artisan test --testsuite=Feature` — pastikan 263+ tetap pass
+4. Sebelum submit, jalankan `php artisan test --testsuite=Feature` — pastikan 321+ tetap pass
 5. Kalau ada file baru, tinker `class_exists()` verify runtime

@@ -71,4 +71,6 @@
         </tr>
     </tbody>
 </table>
+
+@include('pdf.reports.partials._posisi-kas', ['saldoAkhirLaporan' => $saldoAkhir])
 @endsection

@@ -277,27 +277,20 @@ class RentalLogObserver
                 . (optional($log->rentalContract)->contract_number
                     ? ' / ' . $log->rentalContract->contract_number
                     : ''),
+            source: $log,
         );
     }
 
     /**
      * BIZ-03: Void semua jurnal DEPUSE untuk log ini.
      *
-     * Pattern LIKE 'DEPUSE-%-{log_id}' mencover kasus edit yang mengganti
-     * asset_id — jurnal DEPUSE pakai asset_id LAMA, jadi voidExistingJournal
-     * pakai document_number DEPUSE-{new_asset_id}-{log_id} akan miss.
-     * LIKE pattern menangkap DEPUSE-{any_asset}-{log_id}.
-     *
-     * Note: log_id di suffix — pattern aman dari false-match antar log
-     * (LIKE 'DEPUSE-%-5' tidak match 'DEPUSE-%-15').
+     * Lookup via source jurnal (bukan pola teks) — mencakup kasus edit yang
+     * mengganti asset_id, dan tidak ikut menangkap DEPUSE milik RitLog dengan
+     * id yang sama. Lihat DepreciationService::postedUsageJournalsFor().
      */
     private function voidDepreciationJournalsForLog(RentalLog $log): void
     {
-        $journals = JournalEntry::withoutGlobalScopes()
-            ->where('company_id', $log->company_id)
-            ->where('document_number', 'like', sprintf('DEPUSE-%%-%d', $log->id))
-            ->where('status', 'posted')
-            ->get();
+        $journals = $this->depreciationService->postedUsageJournalsFor($log);
 
         foreach ($journals as $journal) {
             try {

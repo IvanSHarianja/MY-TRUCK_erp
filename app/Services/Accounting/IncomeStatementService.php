@@ -41,15 +41,24 @@ class IncomeStatementService
             scopeMode: 'period',
         );
 
+        // `nilai` bertanda sesuai sifat seksi: pendapatan = kredit − debit,
+        // beban = debit − kredit. Dulu total memakai saldo_kredit/saldo_debit saja,
+        // jadi pendapatan bersaldo debit (retur, koreksi) atau beban bersaldo kredit
+        // dibuang dari total — laba berjalan di Neraca ikut salah.
+        $balances->each(function ($row) {
+            $net = round((float) $row->total_debit - (float) $row->total_kredit, 2);
+            $row->nilai = $row->category === 'pendapatan' ? -$net : $net;
+        });
+
         // Pakai category + sub_category dari accounts (lebih reliable daripada parse kode)
         $pendapatan = $balances->filter(fn ($r) => $r->category === 'pendapatan')->values();
         $hpp        = $balances->filter(fn ($r) => $r->category === 'beban' && $r->sub_category === 'beban_hpp')->values();
         $bebanOp    = $balances->filter(fn ($r) => $r->category === 'beban' && $r->sub_category === 'beban_operasional')->values();
 
-        $totalPendapatan = (float) $pendapatan->sum('saldo_kredit');
-        $totalHpp        = (float) $hpp->sum('saldo_debit');
+        $totalPendapatan = (float) $pendapatan->sum('nilai');
+        $totalHpp        = (float) $hpp->sum('nilai');
         $labaKotor       = $totalPendapatan - $totalHpp;
-        $totalBebanOp    = (float) $bebanOp->sum('saldo_debit');
+        $totalBebanOp    = (float) $bebanOp->sum('nilai');
         $labaBersih      = $labaKotor - $totalBebanOp;
         $marginLaba      = $totalPendapatan > 0 ? round($labaBersih / $totalPendapatan * 100, 2) : 0.0;
 

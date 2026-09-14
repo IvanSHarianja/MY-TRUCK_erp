@@ -8,6 +8,8 @@ use App\Models\Asset;
 use App\Models\BusinessUnit;
 use App\Models\Company;
 use App\Models\JournalEntry;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -297,6 +299,8 @@ class DepreciationService
      * @param  Carbon         $date          Tanggal jurnal (biasanya log_date)
      * @param  string         $documentNumber Deterministic doc: 'DEPUSE-{asset_id}-{log_id}'
      * @param  string         $context       Description tambahan (mis. 'RentalLog #5')
+     * @param  Model|null     $source        Log usage pemicu (RentalLog/RitLog) — disimpan
+     *                                       sebagai source jurnal, dipakai cascade void
      */
     public function postUsageDepreciation(
         Asset $asset,
@@ -304,6 +308,7 @@ class DepreciationService
         Carbon $date,
         string $documentNumber,
         string $context = '',
+        ?Model $source = null,
     ): ?JournalEntry {
         $method = $asset->depreciation_method;
 
@@ -330,7 +335,7 @@ class DepreciationService
         // yang sama → total akumulasi melampaui depreciable base (over-depreciation).
         //
         // Nested transaction OK: createEntryWithLines juga wrap tx, savepoint handle.
-        return DB::transaction(function () use ($asset, $usage, $date, $documentNumber, $context, $method, $perUnit, $company) {
+        return DB::transaction(function () use ($asset, $usage, $date, $documentNumber, $context, $method, $perUnit, $company, $source) {
             // Lock asset row — force serialize concurrent postUsageDepreciation per asset
             Asset::withoutGlobalScopes()
                 ->where('id', $asset->id)
@@ -372,8 +377,28 @@ class DepreciationService
                 return null;
             }
 
-            return $this->postDepuseJournal($asset, $company, $date, $documentNumber, $context, $method, $usage, $perUnit, $amount);
+            return $this->postDepuseJournal($asset, $company, $date, $documentNumber, $context, $method, $usage, $perUnit, $amount, $source);
         });
+    }
+
+    /**
+     * Jurnal DEPUSE posted milik satu log usage (RentalLog/RitLog).
+     *
+     * Lookup via source (link struktural), BUKAN LIKE 'DEPUSE-%-{log_id}':
+     * RentalLog dan RitLog punya sequence id sendiri-sendiri, jadi pola teks
+     * untuk RentalLog #12 juga menangkap DEPUSE milik RitLog #12. Source juga
+     * otomatis mencakup kasus asset_id log diganti (DEPUSE lama tetap milik log).
+     *
+     * @return Collection<int, JournalEntry>
+     */
+    public function postedUsageJournalsFor(Model $log): Collection
+    {
+        return JournalEntry::withoutGlobalScopes()
+            ->where('company_id', $log->company_id)
+            ->fromSource($log)
+            ->where('document_number', 'like', 'DEPUSE-%')
+            ->where('status', 'posted')
+            ->get();
     }
 
     /**
@@ -390,6 +415,7 @@ class DepreciationService
         float $usage,
         float $perUnit,
         float $amount,
+        ?Model $source,
     ): ?JournalEntry {
 
         // Akun beban & akumulasi — sama seperti straight-line
@@ -442,6 +468,8 @@ class DepreciationService
                 'entry_date'       => $date,
                 'document_number'  => $documentNumber,
                 'document_type'    => 'penyusutan',
+                'source_type'      => $source?->getMorphClass(),
+                'source_id'        => $source?->getKey(),
                 'business_unit_id' => optional($bu)->id,
                 'description'      => $description,
                 'period_year'      => $date->year,

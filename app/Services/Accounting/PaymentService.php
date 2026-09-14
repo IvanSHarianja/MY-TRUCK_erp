@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\JournalEntryLine;
 use App\Models\Payment;
+use App\Support\DocumentSequence;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
@@ -32,17 +33,12 @@ class PaymentService
     {
         $prefix = sprintf('PAY%02d%02d-', $date->format('y'), $date->format('m'));
 
-        $lastNumber = Payment::withoutGlobalScopes()
-            ->where('company_id', $company->id)
-            ->where('payment_number', 'like', $prefix . '%')
-            ->orderByDesc('payment_number')
-            ->value('payment_number');
-
-        $next = $lastNumber
-            ? ((int) substr($lastNumber, -4)) + 1
-            : 1;
-
-        return $prefix . str_pad((string) $next, 4, '0', STR_PAD_LEFT);
+        return DocumentSequence::next(
+            Payment::withoutGlobalScopes()->where('company_id', $company->id),
+            'payment_number',
+            $prefix,
+            4,
+        );
     }
 
     /**

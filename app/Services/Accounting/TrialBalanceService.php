@@ -12,7 +12,7 @@ class TrialBalanceService
      * Ambil saldo neraca saldo per akun untuk periode tertentu.
      *
      * Logic:
-     *  - Sum debit & kredit dari journal_entry_lines (status posted)
+     *  - Sum debit & kredit dari journal_entry_lines (status posted, bukan pembalik)
      *  - Filter sampai periode (year + optional month — cumulative)
      *  - Hitung saldo: jika debit > kredit → saldo_debit, sebaliknya → saldo_kredit
      *  - Bisa filter per business_unit_id (untuk L/R per lini)
@@ -50,6 +50,12 @@ class TrialBalanceService
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
+            // Void = jurnal asli berstatus 'void' (sudah ter-exclude oleh filter
+            // posted) + jurnal 'pembalik' berstatus posted. Kalau pembalik ikut
+            // dihitung, efek void jadi terbalik: jurnal Kas 1jt yang di-void
+            // tampil sebagai Kas -1jt. Konsisten dengan CashFlow, IS Matrix,
+            // IS per Aset: efek void = 0 di laporan.
+            ->where('je.document_type', '!=', 'pembalik')
             ->when($scopeMode === 'cumulative', function ($q) use ($year, $month) {
                 // Neraca / TB: kumulatif sejak inception s/d $year (dan optionally $month)
                 $q->where('je.period_year', '<=', $year)

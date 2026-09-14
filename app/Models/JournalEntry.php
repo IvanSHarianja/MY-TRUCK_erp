@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\BelongsToCompany;
 use App\Models\Concerns\HasBuktiTf;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -30,7 +31,48 @@ class JournalEntry extends Model
         'posted_at',
         'reversed_by_id',
         'bukti_tf_path',
+        'source_type',
+        'source_id',
     ];
+
+    /**
+     * Format No. Bukti yang hanya boleh dibuat auto-journal sistem.
+     *
+     * document_number dipakai sebagai kunci idempotensi (DEP-/DEPUSE-) dan
+     * dibaca manusia sebagai "jurnal ini milik dokumen X" (INV/PAY/PB/PJ).
+     * Jurnal manual yang meniru format ini bisa memblokir auto-post (dianggap
+     * sudah ada) atau menyesatkan audit.
+     *
+     * Pola sengaja presisi supaya No. Bukti manual yang wajar tetap boleh,
+     * mis. "PBB-2026" (pajak), "DP-SUPPLIER-01", "BKK-001". Format quick tx
+     * (BBK/BKM/JM{YYMM}-NNNN) sengaja TIDAK dicadangkan — itu format bukti kas
+     * yang lazim diketik manual dan tidak dipakai sebagai kunci cascade.
+     */
+    public const SYSTEM_DOCUMENT_PATTERNS = [
+        '/^(INV|PAY|PB|PJ)\d{4}-/i',           // invoice, payment, pembelian, penjualan material
+        '/^BBK-(RL|RT|MT)-\d+/i',              // biaya operasional per log
+        '/^DEP-\d+-/i',                         // penyusutan bulanan DEP-{asset}-{YYYYMM}
+        '/^DEPUSE-\d+-/i',                      // penyusutan usage DEPUSE-{asset}-{log}
+        '/^DP-PR\d{2}-/i',                      // DP proyek DP-{PR26-0001}
+        '/^HPP-PJ\d{4}-/i',                     // HPP penjualan material
+        '/^REV-J\d{4}-/i',                      // jurnal pembalik
+    ];
+
+    public static function isSystemDocumentNumber(?string $documentNumber): bool
+    {
+        $documentNumber = trim((string) $documentNumber);
+        if ($documentNumber === '') {
+            return false;
+        }
+
+        foreach (self::SYSTEM_DOCUMENT_PATTERNS as $pattern) {
+            if (preg_match($pattern, $documentNumber) === 1) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     protected function casts(): array
     {
@@ -40,6 +82,7 @@ class JournalEntry extends Model
             'total_amount' => 'decimal:2',
             'period_year'  => 'integer',
             'period_month' => 'integer',
+            'source_id'    => 'integer',
         ];
     }
 
@@ -66,6 +109,26 @@ class JournalEntry extends Model
     public function reversedBy(): BelongsTo
     {
         return $this->belongsTo(self::class, 'reversed_by_id');
+    }
+
+    /**
+     * Jurnal yang di-generate sistem untuk dokumen sumber tertentu.
+     * source_type/source_id hanya diisi auto-journal — tidak ada di form manual.
+     */
+    public function scopeFromSource(Builder $query, Model $source): Builder
+    {
+        return $query
+            ->where('source_type', $source->getMorphClass())
+            ->where('source_id', $source->getKey());
+    }
+
+    /**
+     * @param  class-string<Model>  $modelClass
+     */
+    public function sourceIs(string $modelClass): bool
+    {
+        return $this->source_id !== null
+            && $this->source_type === (new $modelClass)->getMorphClass();
     }
 
     public function isDraft(): bool

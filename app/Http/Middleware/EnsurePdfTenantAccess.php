@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\Permission;
 use App\Models\Company;
 use App\Models\Invoice;
 use Closure;
@@ -30,6 +31,9 @@ use Symfony\Component\HttpFoundation\Response;
  *
  * User::canAccessTenant() sudah cek pivot is_active=true, jadi user
  * dengan pivot non-aktif juga otomatis ditolak.
+ *
+ * Route laporan juga cek permission ReportsView + ReportsExportPdf (Role Akses).
+ * Invoice PDF sengaja hanya cek keanggotaan — setara InvoicePolicy::view.
  */
 class EnsurePdfTenantAccess
 {
@@ -48,6 +52,17 @@ class EnsurePdfTenantAccess
             abort_unless($user->canAccessTenant($tenant), 403,
                 "Anda tidak memiliki akses ke tenant [{$tenant->slug}]."
             );
+
+            // Semua route {tenant:slug} adalah laporan keuangan. Export PDF
+            // butuh izin lihat laporan DAN izin export — kalau Owner mencabut
+            // salah satu di Role Akses, URL langsung juga harus tertutup.
+            abort_unless(
+                $user->canIn($tenant, Permission::ReportsView)
+                    && $user->canIn($tenant, Permission::ReportsExportPdf),
+                403,
+                'Anda tidak memiliki izin export PDF laporan di tenant ini.'
+            );
+
             return $next($request);
         }
 

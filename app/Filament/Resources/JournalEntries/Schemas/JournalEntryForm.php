@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\JournalEntries\Schemas;
 
 use App\Models\Account;
+use App\Models\JournalEntry;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Hidden;
@@ -48,7 +49,21 @@ class JournalEntryForm
                         TextInput::make('document_number')
                             ->label('No. Bukti')
                             ->maxLength(50)
-                            ->placeholder('INV-0001-01'),
+                            ->placeholder('INV-0001-01')
+                            // Format No. Bukti sistem (DEPUSE-, DP-PR.., INV2609-, dst) dipakai
+                            // sebagai kunci auto-journal — jurnal manual tidak boleh meniru.
+                            // Nilai yang tidak berubah dibiarkan (draft lama tetap bisa disimpan).
+                            ->rule(static function (?JournalEntry $record): \Closure {
+                                return static function (string $attribute, $value, \Closure $fail) use ($record): void {
+                                    if ($record && trim((string) $value) === trim((string) $record->document_number)) {
+                                        return;
+                                    }
+                                    if (JournalEntry::isSystemDocumentNumber($value)) {
+                                        $fail('Format No. Bukti ini dicadangkan untuk jurnal otomatis sistem. '
+                                            . 'Gunakan format lain (mis. "KOR-001") dan sebut dokumen rujukan di Keterangan.');
+                                    }
+                                };
+                            }),
 
                         Select::make('document_type')
                             ->label('Jenis Bukti')

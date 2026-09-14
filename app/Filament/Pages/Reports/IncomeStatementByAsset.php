@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages\Reports;
 
+use App\Filament\Pages\Reports\Concerns\RequiresReportPermission;
 use App\Services\Accounting\IncomeStatementByAssetService;
 use BackedEnum;
 use Filament\Actions\Action;
@@ -16,6 +17,7 @@ use Filament\Support\Icons\Heroicon;
 class IncomeStatementByAsset extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RequiresReportPermission;
 
     protected string $view = 'filament.pages.reports.income-statement-by-asset';
 
@@ -73,6 +75,7 @@ class IncomeStatementByAsset extends Page implements HasForms
                     'month'  => $this->month,
                     'type'   => $this->typeFilter,
                 ]))
+                ->visible(fn (): bool => static::canExportPdf())
                 ->openUrlInNewTab(),
         ];
     }

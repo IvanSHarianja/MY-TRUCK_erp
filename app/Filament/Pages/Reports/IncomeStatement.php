@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages\Reports;
 
+use App\Filament\Pages\Reports\Concerns\RequiresReportPermission;
 use App\Models\BusinessUnit;
 use App\Services\Accounting\IncomeStatementService;
 use BackedEnum;
@@ -17,6 +18,7 @@ use Filament\Support\Icons\Heroicon;
 class IncomeStatement extends Page implements HasForms
 {
     use InteractsWithForms;
+    use RequiresReportPermission;
 
     protected string $view = 'filament.pages.reports.income-statement';
 
@@ -53,6 +55,7 @@ class IncomeStatement extends Page implements HasForms
                     'month'            => $this->month,
                     'business_unit_id' => $this->businessUnitId,
                 ]))
+                ->visible(fn (): bool => static::canExportPdf())
                 ->openUrlInNewTab(),
         ];
     }
