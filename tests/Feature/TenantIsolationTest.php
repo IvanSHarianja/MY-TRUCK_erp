@@ -10,6 +10,7 @@ use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Material;
 use App\Services\Accounting\InvoiceService;
+use App\Services\CompanyTemplateService;
 use Filament\Facades\Filament;
 use Tests\TestCase;
 
@@ -44,8 +45,10 @@ class TenantIsolationTest extends TestCase
         Filament::setTenant($companyA, isQuiet: true);
 
         // Query Account tanpa filter explicit — harusnya hanya lihat company A
+        // (jumlah akun 1 PT, bukan 2×). Pakai accountCount() supaya test isolasi
+        // tidak ikut patah tiap kali template COA bertambah.
         $count = Account::count();
-        $this->assertSame(53, $count, 'Global scope harus filter ke tenant aktif');
+        $this->assertSame($this->templateAccountCount(), $count, 'Global scope harus filter ke tenant aktif');
     }
 
     public function test_global_scope_switch_saat_tenant_berubah(): void
@@ -54,10 +57,10 @@ class TenantIsolationTest extends TestCase
         $companyB = $this->createTenant(['name' => 'PT Beta']);
 
         Filament::setTenant($companyA, isQuiet: true);
-        $this->assertSame(53, Account::count());
+        $this->assertSame($this->templateAccountCount(), Account::count());
 
         Filament::setTenant($companyB, isQuiet: true);
-        $this->assertSame(53, Account::count());
+        $this->assertSame($this->templateAccountCount(), Account::count());
 
         // Semua account IDs milik B, TIDAK ada yang milik A
         $idsB = Account::pluck('id')->all();
@@ -273,5 +276,10 @@ class TenantIsolationTest extends TestCase
         $this->assertFalse($userA->canAccessTenant($companyA),
             'User dengan pivot is_active=false harus ditolak akses'
         );
+    }
+
+    private function templateAccountCount(): int
+    {
+        return app(CompanyTemplateService::class)->accountCount();
     }
 }

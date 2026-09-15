@@ -924,3 +924,104 @@ body:has(.mt-login-side) .fi-btn-color-primary:hover {
         padding: 1.5rem !important;
     }
 }
+
+/* ============================================================ */
+/* ===== PANDUAN PENGGUNA (pop-up: components/panduan-modal) === */
+/* ============================================================ */
+
+.panduan-layout {
+    display: grid;
+    grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+.panduan-toc {
+    /* sticky relatif ke area gulir pop-up, di bawah header pop-up (sticky, ±73px) */
+    position: sticky;
+    top: 5.5rem;
+    max-height: calc(100vh - 8rem);
+    overflow-y: auto;
+    background: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+    border-radius: 1rem;
+    padding: 1rem 1.25rem;
+}
+
+.panduan-toc-group + .panduan-toc-group { margin-top: 1rem; }
+
+.panduan-toc-group-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--mt-text-muted);
+    margin-bottom: 0.375rem;
+}
+
+.panduan-toc ul { list-style: none; margin: 0; padding: 0; }
+
+.panduan-toc a {
+    display: block;
+    padding: 0.3rem 0.5rem;
+    border-radius: 0.5rem;
+    color: var(--mt-text);
+    font-size: 0.875rem;
+    text-decoration: none;
+}
+
+.panduan-toc a:hover { background: var(--mt-surface-2); }
+
+.panduan-content { display: flex; flex-direction: column; gap: 1.25rem; min-width: 0; }
+
+.panduan-section {
+    background: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+    border-radius: 1rem;
+    padding: 1.5rem 1.75rem;
+    /* Judul tidak tertutup header pop-up saat digulir ke bagian ini */
+    scroll-margin-top: 5.5rem;
+}
+
+/* Bagian yang dibuka lewat ikon "?" / daftar isi (class di-set oleh panduan-modal) */
+.panduan-section-aktif { border-color: var(--mt-accent-blue); box-shadow: 0 0 0 3px var(--mt-accent-blue-soft); }
+
+.panduan-section-group {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--mt-text-muted);
+}
+
+.panduan-section-title { font-size: 1.25rem; margin: 0.25rem 0 1rem; color: var(--mt-text); }
+
+.panduan-prose { max-width: 72ch; }
+
+.panduan-back-top {
+    display: inline-block;
+    margin-top: 1rem;
+    font-size: 0.8125rem;
+    color: var(--mt-text-muted);
+    text-decoration: none;
+}
+
+.panduan-back-top:hover { color: var(--mt-text); }
+
+/* Target fokus program (tabindex=-1) — penanda visual sudah dari .panduan-section-aktif */
+.panduan-focus-target:focus { outline: none; }
+
+.panduan-status { padding: 2rem 0; color: var(--mt-text-muted); text-align: center; }
+
+.panduan-retry { color: var(--mt-accent-blue); text-decoration: underline; }
+
+@media (max-width: 1024px) {
+    .panduan-layout { grid-template-columns: minmax(0, 1fr); }
+    .panduan-toc { position: static; max-height: none; }
+}
+
+@media (max-width: 640px) {
+    .panduan-section { padding: 1.25rem 1rem; }
+    /* Di layar sempit tombol topbar cukup ikon — teks disembunyikan */
+    .panduan-topbar-label { display: none; }
+}

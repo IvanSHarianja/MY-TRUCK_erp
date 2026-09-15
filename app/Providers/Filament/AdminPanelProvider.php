@@ -14,6 +14,7 @@ use App\Filament\Widgets\RevenueMixBarWidget;
 use App\Filament\Widgets\TopMaintenanceCostWidget;
 use App\Http\Middleware\EnsureTenantAccess;
 use App\Models\Company;
+use App\Support\UserGuide;
 use Filament\Enums\ThemeMode;
 use Filament\Support\Enums\Width;
 use Filament\Http\Middleware\Authenticate;
@@ -56,6 +57,8 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->font('Poppins')
             ->sidebarCollapsibleOnDesktop()
+            // Global search dimatikan — posisinya di topbar diganti tombol Panduan.
+            ->globalSearch(false)
             ->maxContentWidth(Width::Full)
             ->navigationGroups([
                 'Operasional',
@@ -102,6 +105,33 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::BODY_START,
                 fn (): string => view('filament.auth.login-side')->render(),
                 scopes: [\Filament\Auth\Pages\Login::class],
+            )
+            // Panduan Pengguna = pop-up (tanpa pindah halaman).
+            // Modal dipasang kosong di akhir body; isi di-fetch saat pertama dibuka.
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): string => auth()->check() ? view('filament.components.panduan-modal')->render() : '',
+            )
+            // Tombol "Panduan" di topbar, tepat sebelum avatar user.
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): string => view('filament.components.panduan-button')->render(),
+            )
+            // Ikon "?" di header setiap halaman yang punya bagian panduan.
+            // $scopes = [class Page] atau [class Page, class Resource].
+            ->renderHook(
+                PanelsRenderHook::PAGE_HEADER_ACTIONS_BEFORE,
+                function (array $scopes): string {
+                    $section = UserGuide::sectionFor($scopes);
+                    if (! $section) {
+                        return '';
+                    }
+
+                    return view('filament.components.panduan-help-button', [
+                        'key'   => $section['key'],
+                        'title' => $section['title'],
+                    ])->render();
+                },
             )
             ->middleware([
                 EncryptCookies::class,

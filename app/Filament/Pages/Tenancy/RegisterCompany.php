@@ -98,10 +98,12 @@ class RegisterCompany extends RegisterTenant
 
     public function form(Schema $schema): Schema
     {
+        $coaCount = app(CompanyTemplateService::class)->accountCount();
+
         return $schema
             ->components([
                 Section::make('Identitas Perusahaan')
-                    ->description('Sistem akan otomatis menyediakan COA standar (51 akun) & 5 lini bisnis untuk PT baru.')
+                    ->description("Sistem akan otomatis menyediakan COA standar ({$coaCount} akun) & 5 lini bisnis untuk PT baru.")
                     ->columns(2)
                     ->schema([
                         TextInput::make('name')
@@ -159,7 +161,7 @@ class RegisterCompany extends RegisterTenant
                             ->live()
                             ->default('template')
                             ->options([
-                                'template' => 'Standar (Rekomendasi) — Auto-setup COA 51 akun + 5 lini bisnis + 7 material default',
+                                'template' => "Standar (Rekomendasi) — Auto-setup COA {$coaCount} akun + 5 lini bisnis + 7 material default",
                                 'import'   => 'Import COA dari Excel — Pakai COA milik PT Anda dari file .xlsx',
                                 'empty'    => 'Kosongan — Saya akan buat COA dan master data manual',
                             ])
@@ -275,7 +277,7 @@ class RegisterCompany extends RegisterTenant
         if ($seedMode === 'template') {
             Notification::make()
                 ->title('PT tersedia dengan template lengkap')
-                ->body('COA 51 akun, 5 lini bisnis, dan 7 material default telah di-set. Anda bisa langsung input transaksi.')
+                ->body('COA ' . app(CompanyTemplateService::class)->accountCount() . ' akun, 5 lini bisnis, dan 7 material default telah di-set. Anda bisa langsung input transaksi.')
                 ->success()
                 ->duration(8000)
                 ->send();

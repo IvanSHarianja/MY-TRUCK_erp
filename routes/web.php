@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CoaTemplateController;
+use App\Http\Controllers\PanduanController;
 use App\Http\Controllers\PdfController;
 use Illuminate\Support\Facades\Route;
 
@@ -22,6 +23,14 @@ Route::get('/', fn () => redirect('/admin'));
 Route::get('/coa-template.xlsx', CoaTemplateController::class)
     ->middleware('throttle:20,1')
     ->name('coa.template.download');
+
+/**
+ * Isi pop-up Panduan Pengguna (HTML fragment, di-fetch saat pop-up dibuka).
+ * Cek login di controller — lihat PanduanController.
+ */
+Route::get('/panduan/konten', PanduanController::class)
+    ->middleware('throttle:60,1')
+    ->name('panduan.konten');
 
 /**
  * PDF Export Routes (auth + tenant access required).

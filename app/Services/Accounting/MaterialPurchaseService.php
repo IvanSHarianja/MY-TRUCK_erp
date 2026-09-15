@@ -182,28 +182,14 @@ class MaterialPurchaseService
         ?BusinessUnit $matlUnit,
         string $method,
     ): JournalEntry {
-        // Debit side: Persediaan Material (role: inventory_solar sebagai fallback,
-        // atau kalau nanti ada role inventory_material khusus, pakai itu).
-        // Sementara pakai kode 111220 (Persediaan) atau buat akun spesifik 111260.
-        $accPersediaan = Account::findByRoleOrCode(
-            \App\Enums\AccountRole::InventorySolar, // reuse inventory role
-            '111260',                                 // atau 111220 sebagai fallback
-            $company->id,
-        );
-
-        // Kalau tidak ada 111260, coba 111220 (persediaan solar sebagai fallback umum)
-        if (! $accPersediaan) {
-            $accPersediaan = Account::withoutGlobalScopes()
-                ->where('company_id', $company->id)
-                ->where('code', '111220')
-                ->postable()
-                ->first();
-        }
+        // Debit side: Persediaan Material — resolusi yang SAMA dengan kredit HPP
+        // di MaterialSaleService::postCogs (lihat Account::materialInventoryAccount).
+        $accPersediaan = Account::materialInventoryAccount($company->id);
 
         if (! $accPersediaan) {
             throw ValidationException::withMessages([
-                'material_id' => 'Akun Persediaan Material (111220 atau 111260) tidak ditemukan/postable. '
-                    . 'Buka Master Data → Daftar Akun, buat akun persediaan lebih dulu.',
+                'material_id' => 'Akun Persediaan Material tidak ditemukan/postable. '
+                    . 'Buka Master Data → Daftar Akun, buat akun dengan Peran "Persediaan Material" (kode standar 111260).',
             ]);
         }
 

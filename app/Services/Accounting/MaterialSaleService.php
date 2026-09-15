@@ -258,9 +258,9 @@ class MaterialSaleService
      *   - Kalau material.harga_pokok > harga_satuan (jual rugi) → tetap post,
      *     laba kotor jadi negatif — reflek realita bisnis.
      *
-     * Upgrade path (bukan sekarang): saat modul inventory + Purchase model
-     * ada, ganti Cr Kas → Cr Persediaan Material Alam (111260) dengan
-     * moving average cost dari pembelian real.
+     * Kalau MAC tersedia (sudah ada pembelian), kredit ke akun Persediaan
+     * Material (Account::materialInventoryAccount). Tanpa MAC (data legacy),
+     * tetap kredit Kas seperti perilaku lama.
      */
     private function postCogs(MaterialSale $sale, Company $company, ?BusinessUnit $matlUnit): void
     {
@@ -324,15 +324,9 @@ class MaterialSaleService
         // tetap credit ke Kas (backward compat asumsi lama "beli material tunai").
         $usingMac = $macCost > 0;
         if ($usingMac) {
-            $accKredit = Account::findByRoleOrCode(
-                \App\Enums\AccountRole::InventorySolar,
-                '111260',
-                $company->id,
-            ) ?? Account::withoutGlobalScopes()
-                ->where('company_id', $company->id)
-                ->where('code', '111220')
-                ->postable()
-                ->first();
+            // Resolusi SAMA dengan debit di MaterialPurchaseService — persediaan
+            // yang dikredit harus akun yang dulu didebit saat pembelian.
+            $accKredit = Account::materialInventoryAccount($company->id);
         } else {
             $accKredit = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
         }

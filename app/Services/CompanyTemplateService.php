@@ -85,6 +85,12 @@ class CompanyTemplateService
         }
     }
 
+    /** Jumlah akun COA standar — dipakai teks UI supaya tidak hardcode angka yang basi. */
+    public function accountCount(): int
+    {
+        return count($this->accounts());
+    }
+
     /** @return array<int, array<string, mixed>> */
     private function accounts(): array
     {
@@ -98,6 +104,7 @@ class CompanyTemplateService
             ['code' => '111230', 'name' => 'Asuransi Dibayar Dimuka',          'category' => 'aset', 'sub_category' => 'aset_lancar', 'normal_balance' => 'debit',  'cash_flow_category' => 'operasi',    'tax_type' => 'non_pajak'],
             ['code' => '111240', 'name' => 'Perlengkapan Lapangan',            'category' => 'aset', 'sub_category' => 'aset_lancar', 'normal_balance' => 'debit',  'cash_flow_category' => 'operasi',    'tax_type' => 'non_pajak'],
             ['code' => '111250', 'name' => 'Uang Muka Operasional',            'category' => 'aset', 'sub_category' => 'aset_lancar', 'normal_balance' => 'debit',  'cash_flow_category' => 'operasi',    'tax_type' => 'non_pajak'],
+            ['code' => '111260', 'name' => 'Persediaan Material',              'category' => 'aset', 'sub_category' => 'aset_lancar', 'normal_balance' => 'debit',  'cash_flow_category' => 'operasi',    'tax_type' => 'non_pajak'],
 
             ['code' => '112100', 'name' => 'Aset Tetap — Armada & Alat Berat',  'category' => 'aset', 'sub_category' => 'aset_tetap', 'normal_balance' => 'debit',  'cash_flow_category' => 'investasi', 'tax_type' => 'non_pajak'],
             ['code' => '112105', 'name' => 'Akumulasi Penyusutan Armada',       'category' => 'aset', 'sub_category' => 'aset_tetap', 'normal_balance' => 'kredit', 'cash_flow_category' => 'investasi', 'tax_type' => 'non_pajak'],

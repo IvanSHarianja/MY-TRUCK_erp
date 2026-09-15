@@ -140,6 +140,12 @@ class Account extends Model
         return static::byRole($role, $companyId)->pluck('id')->all();
     }
 
+    public static function materialInventoryAccount(int $companyId): ?self
+    {
+        return static::findByRoleOrCode(\App\Enums\AccountRole::InventoryMaterial, '111260', $companyId)
+            ?? static::findByRoleOrCode(\App\Enums\AccountRole::InventorySolar, '111220', $companyId);
+    }
+
     /**
      * Semua akun kas & bank (role cash / cash_petty) + fallback descendant kode
      * standar 111100 / 111110 untuk data legacy yang role-nya belum di-set.

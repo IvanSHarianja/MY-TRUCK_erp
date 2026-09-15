@@ -14,7 +14,7 @@ use Tests\TestCase;
  * Sprint 2.5 Phase 4 — Regression test role-based lookup.
  *
  * Verifikasi:
- *  - Seed template default auto-set role di 53 akun standar.
+ *  - Seed template default auto-set role di 54 akun standar.
  *  - Enum AccountRole::standardCodeMapping() menutup semua code standard.
  *  - User pakai kode custom (mis. KAS-001) + role='cash' → tetap dipakai
  *    di CashFlowService, InvoiceService, dll.
@@ -30,12 +30,12 @@ class AccountRoleTest extends TestCase
     {
         $company = $this->createTenant();
 
-        // Semua 53 akun standard HARUS punya role sesuai mapping enum
+        // Semua 54 akun standard HARUS punya role sesuai mapping enum
         $accounts = Account::withoutGlobalScopes()
             ->where('company_id', $company->id)
             ->get();
 
-        $this->assertCount(53, $accounts);
+        $this->assertCount(54, $accounts);
 
         $mapping = AccountRole::standardCodeMapping();
         foreach ($accounts as $account) {

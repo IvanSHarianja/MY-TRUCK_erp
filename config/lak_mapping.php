@@ -194,6 +194,12 @@ return [
         'business_unit_code' => 'MATL',
         'items' => [
             [
+                'label'       => 'PEMBELIAN MATERIAL',
+                'description' => 'Pembelian material tunai (masuk persediaan)',
+                'roles'       => [AccountRole::InventoryMaterial, AccountRole::InventorySolar],
+                'direction'   => 'out',
+            ],
+            [
                 'label'       => 'BIAYA HPP MATERIAL',
                 'description' => 'Harga Pokok Penjualan Material',
                 'roles'       => [AccountRole::CogsMaterial],
