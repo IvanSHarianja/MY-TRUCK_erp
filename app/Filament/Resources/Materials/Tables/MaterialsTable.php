@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Materials\Tables;
 
+use App\Enums\MaterialJenis;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -26,6 +27,14 @@ class MaterialsTable
                     ->label('Nama Material')
                     ->searchable()
                     ->sortable(),
+                TextColumn::make('jenis')
+                    ->label('Jenis')
+                    ->badge()
+                    ->formatStateUsing(fn ($state): string => $state instanceof MaterialJenis
+                        ? $state->label()
+                        : (MaterialJenis::tryFrom((string) $state)?->label() ?? (string) $state))
+                    ->color(fn ($state): string => ($state instanceof MaterialJenis ? $state : MaterialJenis::tryFrom((string) $state))
+                        === MaterialJenis::Sparepart ? 'warning' : 'info'),
                 TextColumn::make('harga_per_satuan')
                     ->label('Harga')
                     ->money('IDR')
@@ -50,6 +59,9 @@ class MaterialsTable
                     ->boolean(),
             ])
             ->filters([
+                SelectFilter::make('jenis')
+                    ->label('Jenis')
+                    ->options(MaterialJenis::options()),
                 SelectFilter::make('satuan')
                     ->options([
                         'm3'  => 'm³',

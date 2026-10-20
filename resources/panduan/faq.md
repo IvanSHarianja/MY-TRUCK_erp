@@ -34,6 +34,19 @@ Format tersebut dipakai jurnal otomatis sistem. Gunakan format lain, mis. *KOR-0
 
 Role Anda tidak punya izin *Lihat Laporan Keuangan* atau *Export PDF Laporan*. Minta Owner mengaturnya di **Role Akses**.
 
+### Sparepart tidak muncul di form Pemeliharaan
+
+Material tersebut berjenis *Dijual ke Klien*. Buka **Material**, ubah **Jenis** menjadi
+*Sparepart (Dipakai Sendiri)*. Pastikan juga statusnya Aktif dan stoknya sudah diinput
+lewat Pembelian Material.
+
+### Servis ditolak karena stok sparepart tidak cukup
+
+Stok di sistem lebih kecil dari yang dipakai. Input **Pembelian Material** untuk sparepart
+itu dulu, baru catat servisnya. Kalau sparepart dibeli langsung di bengkel dan tidak masuk
+gudang, jangan isi bagian Sparepart dari Stok — cukup masukkan harganya ke **Biaya Jasa /
+Dibayar Tunai**.
+
 ### Metode penyusutan aset tidak bisa diubah
 
 Aset sudah punya jurnal penyusutan. Void jurnal penyusutan terkait dulu, atau buat aset baru bila memang terjadi perubahan kebijakan.

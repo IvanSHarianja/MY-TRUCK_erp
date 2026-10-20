@@ -14,8 +14,14 @@ use Illuminate\Support\Facades\DB;
  * post jurnal secara eksplisit di dalam transaction — pola ini menghindari
  * double-post kalau user create via Filament (yang panggil service langsung).
  *
- * `updated`: bila cost berubah, void jurnal lama + post baru.
- * `deleting`: void jurnal terkait.
+ * `updated`: bila field biaya berubah, void jurnal lama + post baru. Baris
+ * sparepart TIDAK disentuh di sini — nilainya ikut terbawa karena
+ * postExpenseJournal() membaca ulang items dari DB. Perubahan daftar sparepart
+ * ditangani MaintenanceService::updateLog() yang memakai withoutEvents, jadi
+ * observer ini sengaja tidak ikut jalan di jalur tersebut.
+ *
+ * `deleting`: void jurnal + kembalikan stok sparepart. Urutannya penting —
+ * baris sparepart harus dibaca sebelum baris log terhapus (FK cascade).
  */
 class AssetMaintenanceLogObserver
 {
@@ -34,7 +40,7 @@ class AssetMaintenanceLogObserver
             $this->maintenanceService->voidExistingJournal($log);
             $log->refresh();
 
-            if ((float) $log->cost <= 0) {
+            if ($log->totalCost() <= 0) {
                 return;
             }
 
@@ -48,6 +54,9 @@ class AssetMaintenanceLogObserver
 
     public function deleting(AssetMaintenanceLog $log): void
     {
-        $this->maintenanceService->voidExistingJournal($log);
+        DB::transaction(function () use ($log) {
+            $this->maintenanceService->voidExistingJournal($log);
+            $this->maintenanceService->restoreSpareparts($log);
+        });
     }
 }

@@ -99,9 +99,11 @@ class MaterialPurchaseService
 
         $this->journalService->assertPeriodOpen($company, $purchaseDate->year, $purchaseDate->month);
 
+        // Sparepart dipakai lintas unit (armada & alat berat), bukan milik lini
+        // Penjualan Material — tag UMUM supaya laporan per lini tidak menyesatkan.
         $matlUnit = BusinessUnit::withoutGlobalScopes()
             ->where('company_id', $company->id)
-            ->where('code', 'MATL')
+            ->where('code', $material->isSparepart() ? 'UMUM' : 'MATL')
             ->first();
 
         return DB::transaction(function () use (
@@ -182,14 +184,18 @@ class MaterialPurchaseService
         ?BusinessUnit $matlUnit,
         string $method,
     ): JournalEntry {
-        // Debit side: Persediaan Material — resolusi yang SAMA dengan kredit HPP
-        // di MaterialSaleService::postCogs (lihat Account::materialInventoryAccount).
-        $accPersediaan = Account::materialInventoryAccount($company->id);
+        // Debit side: akun persediaan sesuai jenis material. Resolusi yang SAMA
+        // dipakai sisi kredit saat barang keluar — HPP penjualan (material
+        // dagangan) atau beban servis (sparepart). Lihat Account::inventoryAccountFor.
+        $accPersediaan = Account::inventoryAccountFor($material);
 
         if (! $accPersediaan) {
+            $jenis = $material->isSparepart() ? 'Persediaan Sparepart' : 'Persediaan Material';
+            $kode  = $material->isSparepart() ? '111270' : '111260';
+
             throw ValidationException::withMessages([
-                'material_id' => 'Akun Persediaan Material tidak ditemukan/postable. '
-                    . 'Buka Master Data → Daftar Akun, buat akun dengan Peran "Persediaan Material" (kode standar 111260).',
+                'material_id' => "Akun {$jenis} tidak ditemukan/postable. "
+                    . "Buka Master Data → Daftar Akun, buat akun dengan Peran \"{$jenis}\" (kode standar {$kode}).",
             ]);
         }
 

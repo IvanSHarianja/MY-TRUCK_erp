@@ -63,6 +63,19 @@ class MaterialSaleService
             throw ValidationException::withMessages(['volume' => 'Volume harus lebih dari 0.']);
         }
 
+        // Sparepart dipakai sendiri saat servis unit, bukan dijual ke klien.
+        // Guard di service (bukan cuma filter dropdown) — form bisa dilewati.
+        if ($material->isSparepart()) {
+            throw ValidationException::withMessages([
+                'material_id' => sprintf(
+                    '[%s] %s berjenis Sparepart — dipakai sendiri saat servis, tidak dijual ke klien. '
+                    . 'Catat pemakaiannya di Armada & Alat Berat → tab Pemeliharaan.',
+                    $material->code,
+                    $material->name,
+                ),
+            ]);
+        }
+
         // BIZ-01: Stock guard — cegah sale kalau stok < qty diminta.
         // Backward-compat: material yang belum PERNAH ada stock movement =
         // legacy (tidak track inventory) → allow sale, HPP fallback ke
@@ -326,7 +339,7 @@ class MaterialSaleService
         if ($usingMac) {
             // Resolusi SAMA dengan debit di MaterialPurchaseService — persediaan
             // yang dikredit harus akun yang dulu didebit saat pembelian.
-            $accKredit = Account::materialInventoryAccount($company->id);
+            $accKredit = Account::inventoryAccountFor($lockedMaterial);
         } else {
             $accKredit = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
         }

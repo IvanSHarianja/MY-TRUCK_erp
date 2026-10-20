@@ -90,10 +90,18 @@ Persediaan material terpisah dari **Persediaan Solar (Depo) (111220)**. Cukup **
 
 ### Pemeliharaan aset
 
-| Akun | Peran |
-|---|---|
-| Beban Maintenance & Suku Cadang (551400) | Beban Maintenance & Sparepart |
-| Kas & Bank | Kas & Bank Utama |
+| Akun | Peran | Wajib jika… |
+|---|---|---|
+| Beban Maintenance & Suku Cadang (551400) | Beban Maintenance & Sparepart | Selalu |
+| Kas & Bank | Kas & Bank Utama | Ada biaya jasa/montir yang dibayar |
+| Persediaan Sparepart (111270) | **Persediaan Sparepart** | Memakai sparepart dari stok |
+
+**Sparepart dari stok.** Material berjenis *Sparepart* dibeli lewat **Pembelian Material**
+(Dr Persediaan Sparepart) lalu dipakai saat servis (Cr Persediaan Sparepart, Dr Beban
+Maintenance). Biayanya baru muncul di Laba Rugi **saat dipakai**, bukan saat dibeli.
+
+> Tanpa akun Persediaan Sparepart, servis yang memakai sparepart dari stok **ditolak** —
+> stok tidak akan berkurang diam-diam. Servis tanpa sparepart tidak terpengaruh.
 
 ### Transaksi & Beban
 

@@ -19,4 +19,10 @@ Dipakai widget utilisasi di Dashboard Operasional. Kosongkan bila belum ada targ
 
 ### Pemeliharaan (maintenance)
 
-Buka aset → tab pemeliharaan → **Catat Pemeliharaan**. Isi biaya, bengkel, HM saat service, dan jadwal service berikutnya. Biaya otomatis dijurnal sebagai beban dan tercatat di laporan **Biaya per Unit**.
+Buka aset → tab pemeliharaan → **Catat Pemeliharaan**. Isi **Biaya Jasa / Dibayar Tunai**, bengkel, HM saat service, dan jadwal service berikutnya.
+
+Sparepart yang diambil dari gudang diisi di bagian **Sparepart dari Stok** — stok otomatis
+berkurang dan nilainya dihitung dari harga pokok rata-rata (MAC). Lihat
+[Material: Stok, Pembelian & Penjualan](#material).
+
+Seluruh biaya (jasa + sparepart) otomatis dijurnal sebagai beban dan tercatat di laporan **Biaya per Unit**.

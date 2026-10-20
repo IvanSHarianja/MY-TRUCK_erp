@@ -243,6 +243,16 @@ return [
         'business_unit_code' => null,  // null = semua BU non-operasional
         'items' => [
             [
+                // Pembelian sparepart masuk persediaan (Dr 111270), bukan beban —
+                // jadi tidak tertangkap baris "BIAYA SPART PART" yang memetakan
+                // peran beban maintenance. Tanpa baris ini, kas keluar untuk
+                // sparepart hilang dari LAK.
+                'label'       => 'PEMBELIAN SPAREPART',
+                'description' => 'Pembelian sparepart masuk gudang',
+                'roles'       => [AccountRole::InventorySparepart],
+                'direction'   => 'out',
+            ],
+            [
                 'label'       => 'GAJI KANTOR',
                 'description' => 'Biaya Gaji & Tunjangan Karyawan Kantor',
                 'roles'       => [AccountRole::OpexGaji],

@@ -11,7 +11,7 @@ use Tests\TestCase;
  * Smoke test untuk memastikan Sprint 0 baseline berfungsi:
  * - Migrasi jalan di sqlite in-memory
  * - Factory Company OK
- * - CompanyTemplateService seed 54 akun + 5 BU + 7 material
+ * - CompanyTemplateService seed 55 akun + 5 BU + 7 material
  * - Helper postableAccount() & businessUnit() bekerja
  * - Tenant terisolasi (Company A tidak lihat akun Company B via query eksplisit)
  */
@@ -25,17 +25,18 @@ class BaselineTest extends TestCase
         $this->assertTrue($company->is_active);
     }
 
-    public function test_company_template_seed_54_akun(): void
+    public function test_company_template_seed_55_akun(): void
     {
         // Angka sengaja di-pin: perubahan template COA harus disadari.
-        // 54 = 53 akun lama + 111260 Persediaan Material (2026-09-14).
+        // 55 = 53 akun lama + 111260 Persediaan Material (2026-09-14)
+        //      + 111270 Persediaan Sparepart (2026-10-20).
         $company = $this->createTenant();
 
         $accountsCount = Account::withoutGlobalScopes()
             ->where('company_id', $company->id)
             ->count();
 
-        $this->assertSame(54, $accountsCount, 'CompanyTemplateService harus seed 54 akun');
+        $this->assertSame(55, $accountsCount, 'CompanyTemplateService harus seed 55 akun');
     }
 
     public function test_company_template_seed_5_business_units(): void

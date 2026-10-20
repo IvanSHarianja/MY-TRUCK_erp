@@ -7,6 +7,7 @@ use App\Models\Concerns\BelongsToCompany;
 use App\Models\Concerns\HasBuktiTf;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Activitylog\Support\LogOptions;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 
@@ -84,6 +85,33 @@ class AssetMaintenanceLog extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** Sparepart yang dipakai pada servis ini (diambil dari stok). */
+    public function items(): HasMany
+    {
+        return $this->hasMany(AssetMaintenanceLogItem::class);
+    }
+
+    /**
+     * Nilai sparepart dari stok — harga pokok beku per baris, bukan MAC terkini.
+     * Pakai relasi yang sudah di-eager-load bila ada, supaya tabel tidak N+1.
+     */
+    public function sparepartCost(): float
+    {
+        return (float) ($this->relationLoaded('items')
+            ? $this->items->sum('total')
+            : $this->items()->sum('total'));
+    }
+
+    /**
+     * Total biaya servis = biaya jasa/tunai (kolom cost) + nilai sparepart dari stok.
+     * Kolom `cost` sengaja tetap berarti "yang dibayar tunai" supaya data lama
+     * (tanpa baris sparepart) nilainya tidak berubah.
+     */
+    public function totalCost(): float
+    {
+        return (float) $this->cost + $this->sparepartCost();
     }
 
     /**

@@ -147,6 +147,29 @@ class Account extends Model
     }
 
     /**
+     * Akun persediaan sesuai jenis material.
+     *
+     * WAJIB dipakai di KEDUA sisi alur: pembelian (Dr) dan pemakaian (Cr —
+     * HPP penjualan untuk material dagangan, beban servis untuk sparepart).
+     * Kalau kedua sisi resolve ke akun berbeda, saldo persediaan pecah.
+     *
+     * Sparepart: role 'inventory_sparepart' → kode 111270. TIDAK jatuh ke akun
+     * persediaan material: keduanya memang harus terpisah di Neraca.
+     */
+    public static function inventoryAccountFor(Material $material): ?self
+    {
+        $jenis = $material->jenis instanceof \App\Enums\MaterialJenis
+            ? $material->jenis
+            : \App\Enums\MaterialJenis::tryFrom((string) $material->jenis) ?? \App\Enums\MaterialJenis::Jual;
+
+        if ($jenis === \App\Enums\MaterialJenis::Sparepart) {
+            return static::findByRoleOrCode($jenis->inventoryRole(), $jenis->inventoryCode(), $material->company_id);
+        }
+
+        return static::materialInventoryAccount($material->company_id);
+    }
+
+    /**
      * Semua akun kas & bank (role cash / cash_petty) + fallback descendant kode
      * standar 111100 / 111110 untuk data legacy yang role-nya belum di-set.
      *

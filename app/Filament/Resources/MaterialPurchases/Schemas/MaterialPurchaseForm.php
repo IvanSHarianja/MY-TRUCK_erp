@@ -40,7 +40,8 @@ class MaterialPurchaseForm
                             ->when($tenant, fn ($q) => $q->where('company_id', $tenant->getKey()))
                             ->orderBy('code')
                             ->get()
-                            ->mapWithKeys(fn ($m) => [$m->id => "[{$m->code}] {$m->name} ({$m->satuan})"])
+                            ->mapWithKeys(fn ($m) => [$m->id => "[{$m->code}] {$m->name} ({$m->satuan})"
+                                . ($m->isSparepart() ? ' — Sparepart' : '')])
                             ->toArray();
                     })
                     ->searchable()

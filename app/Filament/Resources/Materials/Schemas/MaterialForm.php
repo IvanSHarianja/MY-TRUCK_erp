@@ -2,11 +2,13 @@
 
 namespace App\Filament\Resources\Materials\Schemas;
 
+use App\Enums\MaterialJenis;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Toggle;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 
 class MaterialForm
@@ -32,13 +34,26 @@ class MaterialForm
                     ->label('Nama Material')
                     ->required()
                     ->maxLength(255)
-                    ->placeholder('contoh: Sirtu, Pasir Urug, Batu Belah'),
+                    ->placeholder('contoh: Sirtu, Pasir Urug, Filter Oli'),
+
+                Select::make('jenis')
+                    ->label('Jenis')
+                    ->required()
+                    ->live()
+                    ->default(MaterialJenis::Jual->value)
+                    ->options(MaterialJenis::options())
+                    ->native(false)
+                    ->helperText('Sparepart dipakai sendiri saat servis unit (tidak muncul di Penjualan Material) '
+                        . 'dan nilainya masuk akun Persediaan Sparepart.'),
 
                 TextInput::make('harga_per_satuan')
                     ->label('Harga Jual per Satuan')
                     ->required()
                     ->default(0)
                     ->rupiah()
+                    // Sparepart tidak dijual — field ini tidak relevan, tapi tetap
+                    // dikirim (kolom NOT NULL) supaya nilainya 0.
+                    ->visible(fn (Get $get): bool => $get('jenis') !== MaterialJenis::Sparepart->value)
                     ->helperText('Harga jual default ke klien.'),
 
                 TextInput::make('current_mac')

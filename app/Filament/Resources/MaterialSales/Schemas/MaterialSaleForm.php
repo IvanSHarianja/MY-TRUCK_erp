@@ -67,7 +67,8 @@ class MaterialSaleForm
                             ->live()
                             ->options(function () {
                                 $tenant = Filament::getTenant();
-                                $query = Material::query()->where('is_active', true);
+                                // Sparepart dipakai sendiri saat servis — tidak dijual ke klien.
+                                $query = Material::query()->jual()->where('is_active', true);
                                 if ($tenant) {
                                     $query->where('company_id', $tenant->getKey());
                                 }

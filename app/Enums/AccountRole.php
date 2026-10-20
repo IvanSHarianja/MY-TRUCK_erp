@@ -30,6 +30,7 @@ enum AccountRole: string
     case Supplies                = 'supplies';                // Perlengkapan Lapangan (111240)
     case PrepaidOperational      = 'prepaid_operational';     // Uang Muka Operasional (111250)
     case InventoryMaterial       = 'inventory_material';      // Persediaan Material (111260) — BIZ-01 perpetual inventory
+    case InventorySparepart      = 'inventory_sparepart';     // Persediaan Sparepart (111270) — dipakai saat servis unit
 
     // === ASET TETAP ===
     case FixedAssetArmada        = 'fixed_asset_armada';      // 112100
@@ -107,6 +108,7 @@ enum AccountRole: string
             self::Supplies             => 'Perlengkapan Lapangan',
             self::PrepaidOperational   => 'Uang Muka Operasional',
             self::InventoryMaterial    => 'Persediaan Material',
+            self::InventorySparepart   => 'Persediaan Sparepart',
             self::FixedAssetArmada     => 'Aset Tetap — Armada & Alat Berat',
             self::AkumulasiArmada      => 'Akumulasi Penyusutan Armada',
             self::FixedAssetKantor     => 'Aset Tetap — Peralatan Kantor',
@@ -164,7 +166,7 @@ enum AccountRole: string
             in_array($this, [
                 self::Cash, self::CashPetty, self::ReceivableUsaha, self::ReceivableRetensi,
                 self::InventorySolar, self::PrepaidAsuransi, self::Supplies, self::PrepaidOperational,
-                self::InventoryMaterial,
+                self::InventoryMaterial, self::InventorySparepart,
             ], true) => '1. Aset Lancar',
 
             in_array($this, [
@@ -225,6 +227,7 @@ enum AccountRole: string
             '111240' => self::Supplies->value,
             '111250' => self::PrepaidOperational->value,
             '111260' => self::InventoryMaterial->value,
+            '111270' => self::InventorySparepart->value,
             // Aset Tetap
             '112100' => self::FixedAssetArmada->value,
             '112105' => self::AkumulasiArmada->value,
@@ -308,7 +311,7 @@ enum AccountRole: string
             self::ReceivableUsaha, self::ReceivableRetensi,
             self::InventorySolar, self::PrepaidAsuransi,
             self::Supplies, self::PrepaidOperational,
-            self::InventoryMaterial                          => 'aset_lancar',
+            self::InventoryMaterial, self::InventorySparepart => 'aset_lancar',
 
             // Aset Tetap
             self::FixedAssetArmada, self::AkumulasiArmada,
@@ -473,6 +476,9 @@ enum AccountRole: string
             'depo solar'                    => self::InventorySolar,
             'persediaan material'           => self::InventoryMaterial,
             'stok material'                 => self::InventoryMaterial,
+            'persediaan sparepart'          => self::InventorySparepart,
+            'persediaan suku cadang'        => self::InventorySparepart,
+            'stok sparepart'                => self::InventorySparepart,
             'piutang usaha'                 => self::ReceivableUsaha,
             'piutang customer'              => self::ReceivableUsaha,
             'piutang retensi'               => self::ReceivableRetensi,
