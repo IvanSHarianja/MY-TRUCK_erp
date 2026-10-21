@@ -69,7 +69,9 @@ class AccountForm
                 TextInput::make('code')
                     ->label('Kode Akun')
                     ->required()
-                    ->maxLength(20)
+                    // Ikut batas kolom accounts.code — kalau form lebih longgar,
+                    // user kena error SQL mentah saat simpan.
+                    ->maxLength(Account::CODE_MAX_LENGTH)
                     ->placeholder('contoh: 111100 atau 111100-01')
                     ->unique(ignoreRecord: true, modifyRuleUsing: function ($rule) {
                         $tenant = Filament::getTenant();

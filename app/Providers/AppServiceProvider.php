@@ -17,6 +17,7 @@ use App\Observers\RitLogObserver;
 use Filament\Actions\Action;
 use Filament\Facades\Filament;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Support\Icons\Heroicon;
 use Filament\Support\RawJs;
@@ -24,6 +25,13 @@ use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
+    /**
+     * Batas jumlah pilihan yang dirender tiap dropdown searchable Filament.
+     * Harus lebih besar dari daftar terpanjang yang wajar di satu PT —
+     * acuan terdekat: jumlah akun COA (lihat CompanyTemplateService::accountCount()).
+     */
+    public const SELECT_OPTIONS_LIMIT = 200;
+
     /**
      * Register any application services.
      */
@@ -54,6 +62,23 @@ class AppServiceProvider extends ServiceProvider
         // source (project.dp_diterima, log.journal_entry_id) yang tidak
         // otomatis di-handle oleh JournalService::void().
         JournalEntry::observe(JournalEntryObserver::class);
+
+        // Dropdown Filament yang searchable HANYA merender 50 pilihan (bawaan
+        // optionsLimit). COA standar saja sudah 55 akun → akun berkode terbesar
+        // (552600 ke atas, 959000) hilang dari dropdown TANPA pesan apa pun;
+        // user mengira akunnya tidak ada. Sama untuk klien/aset/material begitu
+        // datanya lewat 50.
+        //
+        // Dinaikkan terpusat supaya ~30 dropdown tidak perlu diatur satu per satu
+        // dan dropdown baru otomatis ikut. Komponen yang butuh batas lain tetap
+        // bisa menimpa dengan ->optionsLimit() sendiri (dipanggil setelah ini).
+        //
+        // Kalau suatu daftar tumbuh melewati batas ini, jangan sekadar naikkan
+        // angkanya — pindah ke pencarian sisi database (->getSearchResultsUsing()
+        // + ->getOptionLabelUsing(), keduanya wajib).
+        Select::configureUsing(
+            fn (Select $select): Select => $select->optionsLimit(self::SELECT_OPTIONS_LIMIT),
+        );
 
         // ->rupiah() macro — format Indonesia (100.000.000). Display live
         // saat user ketik, strip '.' sebelum submit → DB simpan angka murni.

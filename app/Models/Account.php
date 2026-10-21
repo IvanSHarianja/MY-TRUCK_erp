@@ -12,6 +12,18 @@ class Account extends Model
 {
     use BelongsToCompany;
 
+    /**
+     * Batas panjang kode akun — satu sumber kebenaran untuk form COA dan
+     * import Excel. HARUS sama dengan lebar kolom accounts.code &
+     * parent_code (lihat migrasi 2026_10_21_100000_widen_account_code_columns).
+     *
+     * Kalau form/import lebih longgar dari kolom, user kena error SQL mentah
+     * "Data too long for column 'code'" alih-alih pesan validasi.
+     *
+     * 30 = kode standar 6 digit + ±8 tingkat sub-akun berpola "-NN".
+     */
+    public const CODE_MAX_LENGTH = 30;
+
     protected $fillable = [
         'company_id',
         'code',
@@ -523,9 +535,13 @@ class Account extends Model
      */
     public static function suggestChildCode(string $parentCode, int $companyId): string
     {
+        // Urut panjang dulu, baru nilai — urutan string murni menganggap
+        // '111100-99' > '111100-100', jadi anak ke-101 akan mengulang kode
+        // yang sudah dipakai. Pola yang sama dengan DocumentSequence.
         $existing = static::withoutGlobalScopes()
             ->where('company_id', $companyId)
             ->where('parent_code', $parentCode)
+            ->orderByRaw('LENGTH(code) DESC')
             ->orderByDesc('code')
             ->value('code');
 

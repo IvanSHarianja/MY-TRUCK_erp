@@ -33,6 +33,9 @@ class CoaImportService
     /** Regex kode: huruf, angka, dash. Tidak boleh spasi / underscore / karakter aneh. */
     private const CODE_REGEX = '/^[A-Za-z0-9\-]+$/';
 
+    /** Ikut batas model — jangan di-hardcode ulang di sini. */
+    private const CODE_MAX_LENGTH = Account::CODE_MAX_LENGTH;
+
     public function seedFromExcel(Company $company, string $absoluteFilePath): int
     {
         $rows = $this->parseAndValidate($absoluteFilePath);
@@ -140,7 +143,10 @@ class CoaImportService
                 continue;
             }
 
-            if (! preg_match(self::CODE_REGEX, $code)) {
+            if (mb_strlen($code) > self::CODE_MAX_LENGTH) {
+                $errors[] = "Baris {$excelRowNum}: Kode '{$code}' terlalu panjang (maks "
+                    . self::CODE_MAX_LENGTH . ' karakter).';
+            } elseif (! preg_match(self::CODE_REGEX, $code)) {
                 $errors[] = "Baris {$excelRowNum}: Kode '{$code}' invalid. Hanya boleh huruf, angka, dan tanda '-'.";
             }
 
@@ -161,7 +167,10 @@ class CoaImportService
                     . implode(', ', self::VALID_CATEGORIES) . '.';
             }
 
-            if ($parentCode !== null && ! preg_match(self::CODE_REGEX, $parentCode)) {
+            if ($parentCode !== null && mb_strlen($parentCode) > self::CODE_MAX_LENGTH) {
+                $errors[] = "Baris {$excelRowNum}: Kode Parent '{$parentCode}' terlalu panjang (maks "
+                    . self::CODE_MAX_LENGTH . ' karakter).';
+            } elseif ($parentCode !== null && ! preg_match(self::CODE_REGEX, $parentCode)) {
                 $errors[] = "Baris {$excelRowNum}: Kode Parent '{$parentCode}' invalid. Hanya boleh huruf, angka, dan tanda '-'.";
             }
 
