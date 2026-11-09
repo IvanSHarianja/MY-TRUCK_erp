@@ -23,6 +23,7 @@ enum Permission: string
     case CompanyDelete     = 'company.delete';
     case PeriodClose       = 'period.close';
     case ActivityLogView   = 'activity_log.view';
+    case DataExport        = 'data.export';   // Unduh backup Excel format SOP (seluruh data keuangan PT)
 
     // === Master Data ===
     case ChartOfAccountsManage = 'coa.manage';
@@ -52,6 +53,7 @@ enum Permission: string
             self::CompanyDelete          => 'Hapus PT',
             self::PeriodClose            => 'Close / Open Period Akuntansi',
             self::ActivityLogView        => 'Riwayat Aktivitas',
+            self::DataExport             => 'Unduh Backup Excel (format SOP)',
             self::ChartOfAccountsManage  => 'CRUD Chart of Accounts',
             self::MasterDataManage       => 'CRUD Master Data (Client/Vendor/Employee/Material/Asset/BU)',
             self::OperationalManage      => 'CRUD Operasional (Rental/Armada/Sale/Project)',
@@ -77,7 +79,8 @@ enum Permission: string
             self::RoleManage,
             self::CompanyDelete,
             self::PeriodClose,
-            self::ActivityLogView       => 'System',
+            self::ActivityLogView,
+            self::DataExport            => 'System',
 
             self::ChartOfAccountsManage,
             self::MasterDataManage      => 'Master Data',

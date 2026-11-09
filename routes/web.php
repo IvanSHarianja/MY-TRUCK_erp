@@ -3,6 +3,7 @@
 use App\Http\Controllers\CoaTemplateController;
 use App\Http\Controllers\PanduanController;
 use App\Http\Controllers\PdfController;
+use App\Http\Controllers\SopExportController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -60,3 +61,13 @@ Route::middleware(['web', 'auth', 'pdf.tenant'])->prefix('pdf')->name('pdf.')->g
         Route::get('/asset-cost-per-unit', [PdfController::class, 'assetCostPerUnit'])->name('asset-cost-per-unit');
     });
 });
+
+/**
+ * Backup Excel format SOP Armada. Akses tenant + izin DataExport dicek di
+ * controller (bukan pdf.tenant — middleware itu mewajibkan izin laporan PDF).
+ * Throttle ketat: satu export memakan ±500 MB memori & ±1 menit.
+ */
+Route::middleware(['web', 'auth', 'throttle:5,1'])
+    ->get('/export/{tenant:slug}/sop/{file}.xlsx', SopExportController::class)
+    ->whereIn('file', array_column(\App\Services\Export\SopFile::cases(), 'value'))
+    ->name('export.sop');

@@ -60,6 +60,11 @@ class ActivityLog extends Page implements HasTable
                             \App\Models\MaterialSale::class,
                         ];
 
+                        // Aktivitas tingkat PT (mis. unduh backup Excel) — subject = Company.
+                        $q->orWhere(fn ($c) => $c
+                            ->where('activity_log.subject_type', \App\Models\Company::class)
+                            ->where('activity_log.subject_id', $tenant->getKey()));
+
                         foreach ($models as $model) {
                             $table = (new $model)->getTable();
                             $q->orWhereExists(function ($sub) use ($model, $table, $tenant) {

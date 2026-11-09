@@ -71,6 +71,7 @@ final class UserGuide
         ]],
         ['key' => 'arus-kas', 'group' => 'Keuangan', 'title' => 'Arus Kas', 'pages' => [Reports\CashFlow::class, Reports\CashFlowLak::class]],
         ['key' => 'laporan-aset', 'group' => 'Keuangan', 'title' => 'Penyusutan & Biaya per Unit', 'pages' => [Reports\AssetDepreciation::class, Reports\AssetCostPerUnit::class]],
+        ['key' => 'backup-excel', 'group' => 'Keuangan', 'title' => 'Backup Excel (format SOP)', 'pages' => [Pages\BackupExcel::class]],
 
         ['key' => 'faq', 'group' => 'Bantuan', 'title' => 'Pertanyaan Umum & Kendala', 'pages' => []],
     ];

@@ -38,6 +38,7 @@ final class RoleMatrix
                 Permission::CompanyDelete,
                 Permission::PeriodClose,
                 Permission::ActivityLogView,
+                Permission::DataExport,
                 Permission::ChartOfAccountsManage,
                 Permission::MasterDataManage,
                 Permission::OperationalManage,
@@ -55,6 +56,9 @@ final class RoleMatrix
             Role::Admin => [
                 Permission::UserManage,               // manage user (invite/remove) — TAPI cannot delete owner (business rule di page)
                 Permission::ActivityLogView,
+                // Backup Excel berisi SELURUH data keuangan PT (jurnal, piutang,
+                // klien) — dibatasi Owner + Admin, bukan semua yang bisa lihat laporan.
+                Permission::DataExport,
                 Permission::ChartOfAccountsManage,
                 Permission::MasterDataManage,
                 Permission::OperationalManage,
