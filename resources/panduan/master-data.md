@@ -8,6 +8,16 @@ Pelanggan yang ditagih (penyewa alat, pengguna jasa angkutan, pembeli material, 
 
 Pemasok (material, sparepart, bengkel, subkontraktor). Wajib diisi untuk pembelian **kredit** agar utang tercatat atas nama vendor.
 
+### Import Klien & Vendor dari Excel
+
+Tombol **Import Excel** di halaman Klien dan Vendor memasukkan banyak data sekaligus dari file milik perusahaan (.xlsx / .xls / .csv).
+
+- Kolom dikenali dari **judulnya**, jadi urutan kolom bebas: Kode, Nama (atau Keterangan), Alamat, No Telp, Email, Kontak, NPWP.
+- Bila ada kolom **JENIS** (seperti sheet *Kode Bantu*), import Klien hanya mengambil baris **PIUTANG**, dan import Vendor hanya **HUTANG**. Baris lain (karyawan, biaya dibayar dimuka) dilewati.
+- Bila satu sheet berisi beberapa tabel (mis. *Daftar Suplier* lalu *Daftar Konsumen*), tiap tabel dibaca terpisah sesuai judulnya.
+- Tanpa kolom Kode, kode dibuat otomatis (KL-001 / VD-001). Jenis vendor ditebak dari keterangannya (sparepart, bengkel, BBM, kuari).
+- Kode atau nama yang **sudah ada dilewati, tidak ditimpa**, jadi import aman diulang.
+
 ### Karyawan
 
 Operator alat berat dan supir dump truck. Dipilih saat input jam kerja (rental) atau ritase (armada).

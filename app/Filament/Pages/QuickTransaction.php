@@ -344,10 +344,12 @@ class QuickTransaction extends Page implements HasForms, HasTable
                             ])
                             ->default((int) now()->month),
                     ])
-                    ->query(function (Builder $q, array $data): Builder {
-                        if (! empty($data['year']))  $q->where('period_year', $data['year']);
-                        if (! empty($data['month'])) $q->where('period_month', $data['month']);
-                        return $q;
+                    // Nama parameter HARUS $query: Filament menyuntikkan argumen closure
+                    // berdasarkan nama. Dulu `$q` → Builder kosong → filter tak berefek.
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! empty($data['year']))  $query->where('period_year', $data['year']);
+                        if (! empty($data['month'])) $query->where('period_month', $data['month']);
+                        return $query;
                     }),
                 SelectFilter::make('status')
                     ->options([

@@ -182,7 +182,7 @@ class RegisterCompany extends RegisterTenant
 
                         FileUpload::make('coa_excel_path')
                             ->label('File Excel COA (.xlsx)')
-                            ->helperText('Isi sheet "COA" — kolom Kode, Nama Akun, Kategori, Kode Parent. Baris contoh WAJIB dihapus sebelum upload. Maksimal 5 MB.')
+                            ->helperText('Dua format diterima: (1) template MY-TRUCK — kolom Kode, Nama Akun, Kategori, Kode Parent (hapus baris contoh); atau (2) file COA Anda sendiri dengan judul kolom KODE, NAMA AKUN, TYPE (Header/Child), boleh plus Kategori, Sub-Kategori, Saldo Normal, Arus Kas, Peran. Maksimal 5 MB.')
                             ->acceptedFileTypes([
                                 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                             ])
@@ -245,7 +245,9 @@ class RegisterCompany extends RegisterTenant
 
                     $absolutePath = Storage::disk('local')->path($relativePath);
 
-                    $importCount = app(CoaImportService::class)->seedFromExcel($company, $absolutePath);
+                    $importer    = app(CoaImportService::class);
+                    $importCount = $importer->seedFromExcel($company, $absolutePath);
+                    $this->importReport = $importer->report;
 
                     // BU + Material default tetap di-seed (fitur operasional langsung jalan).
                     // Dalam outer transaction: kalau ini fail, COA + Company juga rollback.
@@ -267,12 +269,15 @@ class RegisterCompany extends RegisterTenant
 
         // Notification HANYA dikirim setelah transaction commit — supaya "sukses"
         // tidak salah kirim kalau transaction rollback.
-        $this->sendPostRegistrationNotification($seedMode, $importCount);
+        $this->sendPostRegistrationNotification($seedMode, $importCount, $company);
 
         return $company;
     }
 
-    private function sendPostRegistrationNotification(string $seedMode, int $importCount): void
+    /** Ringkasan CoaImportService untuk notifikasi (slot dilewati, peran ditebak). */
+    private array $importReport = [];
+
+    private function sendPostRegistrationNotification(string $seedMode, int $importCount, ?Company $company = null): void
     {
         if ($seedMode === 'template') {
             Notification::make()
@@ -282,11 +287,20 @@ class RegisterCompany extends RegisterTenant
                 ->duration(8000)
                 ->send();
         } elseif ($seedMode === 'import') {
+            $r = $this->importReport;
+            $lines = array_filter([
+                "Berhasil import {$importCount} akun dari file Excel Anda. 5 lini bisnis + 7 material default juga sudah di-set.",
+                ! empty($r['skipped_slots']) ? "{$r['skipped_slots']} baris tanpa TYPE (slot cadangan) dilewati." : null,
+                ! empty($r['roles_guessed']) ? "{$r['roles_guessed']} peran akun diisi dari tebakan nama — periksa di Master Data → Daftar Akun." : null,
+                $company ? \App\Support\AccountRoleReadiness::summary($company->id) : null,
+            ]);
+            $incomplete = $company && \App\Support\AccountRoleReadiness::missing($company->id) !== [];
+
             Notification::make()
                 ->title('PT tersedia dengan COA hasil import')
-                ->body("Berhasil import {$importCount} akun dari file Excel Anda. 5 lini bisnis + 7 material default juga sudah di-set.")
-                ->success()
-                ->duration(10000)
+                ->body(implode("\n\n", $lines))
+                ->{$incomplete ? 'warning' : 'success'}()
+                ->persistent()
                 ->send();
         } else {
             Notification::make()

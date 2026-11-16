@@ -91,19 +91,15 @@ class RentalContractForm
                                 'semi'      => 'Semi (Operator dari PT, BBM klien)',
                                 'alat_saja' => 'Alat Saja (Dry Rental)',
                             ])
+                            // live(): section BBM/Operator di bawah tampil/sembunyi mengikuti tipe.
                             ->live()
-                            ->afterStateUpdated(function (?string $state, Set $set) {
-                                // Auto-sync flag turunan supaya service tidak perlu parse string.
-                                $set('include_bbm', $state === 'all_in');
-                                $set('include_operator', in_array($state, ['all_in', 'semi'], true));
-                            })
                             ->columnSpanFull(),
                     ]),
 
                 Section::make('Standar Biaya BBM')
                     ->description('Estimasi konsumsi solar per jam operasi & harga per liter. Kosongkan harga untuk pakai default company.')
                     ->columns(2)
-                    ->visible(fn (Get $get): bool => (bool) $get('include_bbm'))
+                    ->visible(fn (Get $get): bool => self::includesBbm($get))
                     ->schema([
                         TextInput::make('bbm_liter_per_jam')
                             ->label('Konsumsi BBM (liter/jam)')
@@ -112,7 +108,7 @@ class RentalContractForm
                             ->minValue(0.1)
                             ->suffix('L/jam')
                             ->placeholder('contoh: 12.5')
-                            ->required(fn (Get $get): bool => (bool) $get('include_bbm')),
+                            ->required(fn (Get $get): bool => self::includesBbm($get)),
 
                         TextInput::make('harga_bbm_per_liter')
                             ->label('Harga BBM (Rp/liter)')
@@ -124,19 +120,19 @@ class RentalContractForm
                 Section::make('Standar Biaya Operator')
                     ->description('Biaya operator harian & premi. Uang makan & gaji flat per hari kerja.')
                     ->columns(2)
-                    ->visible(fn (Get $get): bool => (bool) $get('include_operator'))
+                    ->visible(fn (Get $get): bool => self::includesOperator($get))
                     ->schema([
                         TextInput::make('gaji_operator_per_hari')
                             ->label('Gaji Operator per Hari')
                             ->rupiah()
                             ->placeholder('contoh: 250000')
-                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+                            ->required(fn (Get $get): bool => self::includesOperator($get)),
 
                         TextInput::make('uang_makan_per_hari')
                             ->label('Uang Makan per Hari')
                             ->rupiah()
                             ->placeholder('contoh: 50000')
-                            ->required(fn (Get $get): bool => (bool) $get('include_operator')),
+                            ->required(fn (Get $get): bool => self::includesOperator($get)),
 
                         TextInput::make('premi_per_jam')
                             ->label('Premi per Jam Kerja (opsional)')
@@ -157,5 +153,20 @@ class RentalContractForm
                             ->rows(2),
                     ]),
             ]);
+    }
+
+    /*
+     * Tampil/wajibnya section biaya diturunkan dari TIPE RENTAL (sama dengan
+     * RentalContract::includesBbm()), bukan dari kolom include_* tersimpan yang
+     * bisa basi — lihat ArmadaContractForm.
+     */
+    private static function includesBbm(Get $get): bool
+    {
+        return $get('tipe_rental') === 'all_in';
+    }
+
+    private static function includesOperator(Get $get): bool
+    {
+        return in_array($get('tipe_rental'), ['all_in', 'semi'], true);
     }
 }

@@ -56,6 +56,7 @@ final class UserGuide
         ['key' => 'rental', 'group' => 'Operasional', 'title' => 'Rental Alat Berat', 'pages' => [Resources\RentalContracts\RentalContractResource::class]],
         ['key' => 'armada', 'group' => 'Operasional', 'title' => 'Jasa Angkutan Armada', 'pages' => [Resources\ArmadaContracts\ArmadaContractResource::class]],
         ['key' => 'proyek', 'group' => 'Operasional', 'title' => 'Proyek Borongan', 'pages' => [Resources\Projects\ProjectResource::class]],
+        ['key' => 'persetujuan-kontrak', 'group' => 'Operasional', 'title' => 'Persetujuan Perubahan Kontrak', 'pages' => [Pages\ContractApprovals::class]],
         ['key' => 'transaksi-beban', 'group' => 'Operasional', 'title' => 'Transaksi & Beban', 'pages' => [Pages\QuickTransaction::class]],
 
         ['key' => 'tagihan', 'group' => 'Keuangan', 'title' => 'Tagihan & Piutang', 'pages' => [Resources\Invoices\InvoiceResource::class]],

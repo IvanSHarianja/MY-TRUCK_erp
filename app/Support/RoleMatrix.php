@@ -42,6 +42,9 @@ final class RoleMatrix
                 Permission::ChartOfAccountsManage,
                 Permission::MasterDataManage,
                 Permission::OperationalManage,
+                // Perubahan kontrak (tarif/biaya standar) = keputusan komersial →
+                // default hanya Owner. Bisa didelegasikan per PT lewat Matriks Akses.
+                Permission::ContractApprove,
                 Permission::InvoiceCreate,
                 Permission::InvoiceVoid,
                 Permission::PaymentManage,

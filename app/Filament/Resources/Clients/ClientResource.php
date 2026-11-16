@@ -38,6 +38,14 @@ class ClientResource extends Resource
         return ClientsTable::configure($table);
     }
 
+    public static function getWidgets(): array
+    {
+        return [
+            Widgets\ClientPaymentSummary::class,
+            Widgets\ClientPaymentHistory::class,
+        ];
+    }
+
     public static function getPages(): array
     {
         return [

@@ -46,11 +46,13 @@ class InvoiceStatsWidget extends StatsOverviewWidget
         $totalPiutang = (float) ($outstanding->total ?? 0);
         $jumlahOutstanding = (int) ($outstanding->cnt ?? 0);
 
-        // Overdue >30 hari
+        // Telat >30 hari dari JATUH TEMPO — definisi sama dengan kolom
+        // Keterlambatan di Tagihan (PaymentTiming). Dulu DATEDIFF dari tanggal
+        // invoice: beda angka dengan tabel, dan khusus MySQL.
         $overdue = Invoice::query()
             ->where('company_id', $companyId)
             ->whereIn('status', ['terbit', 'sebagian'])
-            ->whereRaw('DATEDIFF(?, invoice_date) > 30', [$today->toDateString()])
+            ->whereRaw('COALESCE(due_date, invoice_date) < ?', [$today->copy()->subDays(30)->toDateString()])
             ->selectRaw('SUM(amount - paid_amount) as total, COUNT(*) as cnt')
             ->first();
 
@@ -72,7 +74,7 @@ class InvoiceStatsWidget extends StatsOverviewWidget
                 ->descriptionIcon('heroicon-m-document-text')
                 ->color($totalPiutang > 0 ? 'warning' : 'success'),
 
-            Stat::make('Overdue (>30 hari)', $fmt($totalOverdue))
+            Stat::make('Telat > 30 hari', $fmt($totalOverdue))
                 ->description("{$jumlahOverdue} invoice perlu ditagih segera")
                 ->descriptionIcon('heroicon-m-exclamation-triangle')
                 ->color($jumlahOverdue > 0 ? 'danger' : 'success'),

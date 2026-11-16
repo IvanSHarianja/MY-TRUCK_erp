@@ -87,18 +87,15 @@ class ArmadaContractForm
                                 'semi' => 'Semi (Supir dari PT, BBM klien)',
                                 'alat_saja' => 'Alat Saja (Klien tanggung semua)',
                             ])
+                            // live(): section BBM/Supir di bawah tampil/sembunyi mengikuti tipe.
                             ->live()
-                            ->afterStateUpdated(function (?string $state, Set $set) {
-                                $set('include_bbm', $state === 'all_in');
-                                $set('include_operator', in_array($state, ['all_in', 'semi'], true));
-                            })
                             ->columnSpanFull(),
                     ]),
 
                 Section::make('Standar Biaya BBM (per rit)')
                     ->description('Estimasi konsumsi BBM per rit tergantung jarak rute. Kosongkan harga untuk pakai default company.')
                     ->columns(2)
-                    ->visible(fn(Get $get): bool => (bool) $get('include_bbm'))
+                    ->visible(fn (Get $get): bool => self::includesBbm($get))
                     ->schema([
                         TextInput::make('bbm_liter_per_rit')
                             ->label('Konsumsi BBM per Rit')
@@ -107,7 +104,7 @@ class ArmadaContractForm
                             ->minValue(0.1)
                             ->suffix('L/rit')
                             ->placeholder('contoh: 15')
-                            ->required(fn(Get $get): bool => (bool) $get('include_bbm')),
+                            ->required(fn (Get $get): bool => self::includesBbm($get)),
 
                         TextInput::make('harga_bbm_per_liter')
                             ->label('Harga BBM (Rp/liter)')
@@ -119,19 +116,19 @@ class ArmadaContractForm
                 Section::make('Standar Biaya Supir')
                     ->description('Gaji & uang makan flat per hari kerja. Uang jalan & premi per rit.')
                     ->columns(2)
-                    ->visible(fn(Get $get): bool => (bool) $get('include_operator'))
+                    ->visible(fn (Get $get): bool => self::includesOperator($get))
                     ->schema([
                         TextInput::make('gaji_supir_per_hari')
                             ->label('Gaji Supir per Hari')
                             ->rupiah()
                             ->placeholder('contoh: 200000')
-                            ->required(fn(Get $get): bool => (bool) $get('include_operator')),
+                            ->required(fn (Get $get): bool => self::includesOperator($get)),
 
                         TextInput::make('uang_makan_per_hari')
                             ->label('Uang Makan per Hari')
                             ->rupiah()
                             ->placeholder('contoh: 50000')
-                            ->required(fn(Get $get): bool => (bool) $get('include_operator')),
+                            ->required(fn (Get $get): bool => self::includesOperator($get)),
 
                         TextInput::make('uang_jalan_per_rit')
                             ->label('Uang Jalan per Rit')
@@ -146,5 +143,21 @@ class ArmadaContractForm
                             ->helperText('Insentif per rit. Kosongkan bila tidak ada.'),
                     ]),
             ]);
+    }
+
+    /*
+     * Tampil/wajibnya section biaya diturunkan dari TIPE KONTRAK (sama dengan
+     * ArmadaContract::includesBbm()), bukan dari kolom include_* tersimpan:
+     * kolom itu bisa basi (KA26-0002: Alat Saja tapi include_* = 1) dan
+     * membuat field biaya tersembunyi jadi wajib → simpan gagal diam-diam.
+     */
+    private static function includesBbm(Get $get): bool
+    {
+        return $get('tipe_kontrak') === 'all_in';
+    }
+
+    private static function includesOperator(Get $get): bool
+    {
+        return in_array($get('tipe_kontrak'), ['all_in', 'semi'], true);
     }
 }

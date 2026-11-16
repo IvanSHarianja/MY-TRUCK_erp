@@ -6,6 +6,9 @@ use App\Models\Account;
 use App\Models\Invoice;
 use App\Services\Accounting\InvoiceService;
 use App\Services\Accounting\PaymentService;
+use App\Support\PaymentTiming;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Filament\Actions\Action;
 use Filament\Actions\EditAction;
 use Filament\Forms\Components\DatePicker;
@@ -25,6 +28,8 @@ class InvoicesTable
     {
         return $table
             ->defaultSort('invoice_date', 'desc')
+            // Tanggal pelunasan untuk kolom Keterlambatan — sekali query, bukan per baris.
+            ->modifyQueryUsing(fn ($query) => $query->withMax('payments', 'payment_date'))
             ->columns([
                 TextColumn::make('invoice_number')
                     ->label('No. Invoice')
@@ -67,16 +72,17 @@ class InvoicesTable
                     ->money('IDR')
                     ->getStateUsing(fn ($record) => $record->sisa),
 
-                TextColumn::make('umur_hari')
-                    ->label('Umur')
-                    ->getStateUsing(fn ($record) => $record->umur_hari . ' hari')
+                TextColumn::make('due_date')
+                    ->label('Jatuh Tempo')
+                    ->date('d M Y')
+                    ->sortable(),
+
+                // Telat bayar dihitung dari JATUH TEMPO (PaymentTiming).
+                TextColumn::make('keterlambatan')
+                    ->label('Keterlambatan')
+                    ->getStateUsing(fn (Invoice $record) => $record->timelinessLabel())
                     ->badge()
-                    ->color(fn ($record) => match ($record->aging_category) {
-                        'overdue'   => 'danger',
-                        'perhatian' => 'warning',
-                        default     => 'success',
-                    })
-                    ->visible(fn ($record) => $record?->canReceivePayment() ?? true),
+                    ->color(fn (Invoice $record) => $record->timelinessColor()),
 
                 TextColumn::make('status')
                     ->label('Status')
@@ -88,11 +94,6 @@ class InvoicesTable
                         'lunas'    => 'success',
                         'void'     => 'danger',
                     }),
-
-                TextColumn::make('due_date')
-                    ->label('Jatuh Tempo')
-                    ->date('d M Y')
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 SelectFilter::make('status')
@@ -108,29 +109,12 @@ class InvoicesTable
                     ->label('Lini Bisnis')
                     ->relationship('businessUnit', 'name'),
 
-                SelectFilter::make('aging')
-                    ->label('Aging')
-                    ->options([
-                        'lancar'    => 'Lancar (<14 hari)',
-                        'perhatian' => 'Perhatian (14-30 hari)',
-                        'overdue'   => 'Overdue (>30 hari)',
-                    ])
-                    ->query(function ($query, array $data) {
-                        if (! ($data['value'] ?? null)) {
-                            return $query;
-                        }
-                        return $query->whereIn('status', ['terbit', 'sebagian'])
-                            ->where(function ($q) use ($data) {
-                                $today = now()->toDateString();
-                                if ($data['value'] === 'overdue') {
-                                    $q->whereRaw('DATEDIFF(?, invoice_date) > 30', [$today]);
-                                } elseif ($data['value'] === 'perhatian') {
-                                    $q->whereRaw('DATEDIFF(?, invoice_date) BETWEEN 15 AND 30', [$today]);
-                                } else {
-                                    $q->whereRaw('DATEDIFF(?, invoice_date) <= 14', [$today]);
-                                }
-                            });
-                    }),
+                // Dihitung dari JATUH TEMPO. Batas tanggal dihitung di PHP supaya
+                // query portabel (dulu DATEDIFF = khusus MySQL).
+                SelectFilter::make('keterlambatan')
+                    ->label('Keterlambatan')
+                    ->options(PaymentTiming::BUCKETS + ['lunas_telat' => 'Lunas tapi telat'])
+                    ->query(fn ($query, array $data) => self::applyLatenessFilter($query, $data['value'] ?? null)),
             ])
             ->recordActions([
                 // Issue: draft → terbit, auto-post jurnal
@@ -261,5 +245,38 @@ class InvoicesTable
                         }
                     }),
             ]);
+    }
+
+    /**
+     * Filter keterlambatan. Telat N hari = jatuh tempo < hari ini − N, jadi
+     * rentang "telat a–b hari" = jatuh tempo di [hari ini − b, hari ini − a].
+     */
+    public static function applyLatenessFilter(Builder $query, ?string $value, ?Carbon $today = null): Builder
+    {
+        if (! $value) {
+            return $query;
+        }
+
+        $today ??= Carbon::today();
+        $due   = 'COALESCE(invoices.due_date, invoices.invoice_date)';
+        $d     = fn (int $days) => $today->copy()->subDays($days)->toDateString();
+
+        if ($value === 'lunas_telat') {
+            return $query->where('status', 'lunas')
+                ->whereExists(fn ($q) => $q->selectRaw('1')->from('payments')
+                    ->whereColumn('payments.invoice_id', 'invoices.id')
+                    ->whereRaw("payments.payment_date > {$due}"));
+        }
+
+        $query->whereIn('status', ['terbit', 'sebagian']);
+
+        return match ($value) {
+            'belum' => $query->whereRaw("{$due} >= ?", [$d(0)]),
+            '1-30'  => $query->whereRaw("{$due} < ?", [$d(0)])->whereRaw("{$due} >= ?", [$d(30)]),
+            '31-60' => $query->whereRaw("{$due} < ?", [$d(30)])->whereRaw("{$due} >= ?", [$d(60)]),
+            '61-90' => $query->whereRaw("{$due} < ?", [$d(60)])->whereRaw("{$due} >= ?", [$d(90)]),
+            '>90'   => $query->whereRaw("{$due} < ?", [$d(90)]),
+            default => $query,
+        };
     }
 }

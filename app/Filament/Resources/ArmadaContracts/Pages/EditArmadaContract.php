@@ -2,20 +2,22 @@
 
 namespace App\Filament\Resources\ArmadaContracts\Pages;
 
+use App\Filament\Concerns\RequiresContractApproval;
 use App\Filament\Resources\ArmadaContracts\ArmadaContractResource;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
 class EditArmadaContract extends EditRecord
 {
+    use RequiresContractApproval;
+
     protected static string $resource = ArmadaContractResource::class;
 
     protected function getHeaderActions(): array
     {
         return [
-            $this->getSaveFormAction()
-                ->formId('form')
-                ->visible(fn (): bool => $this->record->isAktif()),
+            // Simpan = ajukan perubahan (approval Owner) — lihat RequiresContractApproval.
+            $this->submitChangeAction(),
 
             $this->getCancelFormAction(),
 

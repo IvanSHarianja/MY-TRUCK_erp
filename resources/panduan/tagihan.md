@@ -14,11 +14,25 @@ Aksi **Terima Pembayaran** → isi **Tanggal Bayar**, rekening penerima (**Diter
 - Pembayaran boleh **sebagian** (cicilan). Kolom **Sisa** menunjukkan yang belum dibayar.
 - Status berubah otomatis: terbit → sebagian → lunas.
 
-### Memantau piutang
+### Memantau piutang & keterlambatan
 
-- Kolom **Umur** dan filter **Aging** menunjukkan berapa lama tagihan belum dibayar.
-- Filter **Jatuh Tempo** untuk melihat tagihan yang sudah lewat tempo.
+- Kolom **Keterlambatan** dihitung dari **jatuh tempo**: "Jatuh tempo 5 hari lagi", "Telat 12 hari", "Lunas tepat waktu", atau "Lunas, telat 3 hari" (dari tanggal pembayaran terakhir).
+- Filter **Keterlambatan** memilah tagihan per kelompok: belum jatuh tempo, telat 1–30, 31–60, 61–90, lebih dari 90 hari, atau lunas tapi telat.
 - **Cetak PDF** untuk mengirim invoice secara manual.
+
+### Laporan Piutang & export Excel
+
+Tombol **Laporan Piutang** di atas tabel membuka laporan berisi:
+
+- **Umur piutang per klien** per tanggal *Sampai*, termasuk rata-rata hari telat bayar tiap klien.
+- **Invoice belum lunas**, diurutkan dari yang paling lama telat.
+- **Riwayat pembayaran** dalam periode *Dari–Sampai*, dengan ketepatan tiap pembayaran.
+
+Pilih klien tertentu bila perlu, lalu **Export Excel** untuk mengunduh ketiga bagian tersebut (3 sheet).
+
+### Riwayat pembayaran per klien
+
+Buka **Master Data → Klien → (pilih klien)**. Di atas tampil ringkasan total ditagih, sudah dibayar, sisa piutang, dan rata-rata telat bayar. Di bawahnya tab **Riwayat Pembayaran** berisi semua pembayaran klien itu beserta ketepatannya.
 
 ### Void invoice
 

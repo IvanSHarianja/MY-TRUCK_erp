@@ -31,6 +31,7 @@ enum Permission: string
 
     // === Operasional (kontrak & log) ===
     case OperationalManage = 'operational.manage';       // Rental/Armada/MaterialSale/Project/Log
+    case ContractApprove   = 'contract.approve';         // Setujui perubahan kontrak (default: Owner)
 
     // === Financial (uang & jurnal) ===
     case InvoiceCreate     = 'invoice.create';
@@ -57,6 +58,7 @@ enum Permission: string
             self::ChartOfAccountsManage  => 'CRUD Chart of Accounts',
             self::MasterDataManage       => 'CRUD Master Data (Client/Vendor/Employee/Material/Asset/BU)',
             self::OperationalManage      => 'CRUD Operasional (Rental/Armada/Sale/Project)',
+            self::ContractApprove        => 'Setujui Perubahan Kontrak',
             self::InvoiceCreate          => 'Buat & Issue Invoice',
             self::InvoiceVoid            => 'Void Invoice',
             self::PaymentManage          => 'Input & Reverse Payment',
@@ -85,7 +87,8 @@ enum Permission: string
             self::ChartOfAccountsManage,
             self::MasterDataManage      => 'Master Data',
 
-            self::OperationalManage     => 'Operasional',
+            self::OperationalManage,
+            self::ContractApprove       => 'Operasional',
 
             self::InvoiceCreate,
             self::InvoiceVoid,

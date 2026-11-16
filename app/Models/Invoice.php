@@ -147,6 +147,85 @@ class Invoice extends Model
         return max(0, (int) $this->invoice_date->diffInDays(Carbon::today($tz), false));
     }
 
+    // === Ketepatan bayar (lihat App\Support\PaymentTiming) ===
+
+    /** Jatuh tempo efektif: due_date, atau tanggal invoice bila kosong. */
+    public function effectiveDueDate(): ?Carbon
+    {
+        return $this->due_date ?? $this->invoice_date;
+    }
+
+    /**
+     * Tanggal pelunasan = pembayaran terakhir. Pakai hasil withMax() bila
+     * query tabel sudah memuatnya (hindari 1 query per baris).
+     */
+    public function settledDate(): ?Carbon
+    {
+        if (! $this->isLunas()) {
+            return null;
+        }
+
+        $max = array_key_exists('payments_max_payment_date', $this->attributes)
+            ? $this->attributes['payments_max_payment_date']
+            : $this->payments()->max('payment_date');
+
+        return $max ? Carbon::parse($max) : null;
+    }
+
+    /**
+     * Hari telat bayar. Null untuk draft/void (tidak relevan).
+     * Lunas → saat pelunasan; belum lunas → per $asOf (default hari ini).
+     */
+    public function daysLate(?\Carbon\CarbonInterface $asOf = null): ?int
+    {
+        if ($this->isDraft() || $this->isVoid()) {
+            return null;
+        }
+
+        $at = $this->isLunas()
+            ? ($this->settledDate() ?? $this->effectiveDueDate())
+            : ($asOf ?? $this->today());
+
+        return \App\Support\PaymentTiming::daysLate($this->effectiveDueDate(), $at);
+    }
+
+    /** Teks singkat untuk kolom/badge Keterlambatan. */
+    public function timelinessLabel(): string
+    {
+        $late = $this->daysLate();
+        if ($late === null) {
+            return '—';
+        }
+        if ($this->isLunas()) {
+            return $late > 0 ? "Lunas, telat {$late} hari" : 'Lunas tepat waktu';
+        }
+        if ($late > 0) {
+            return "Telat {$late} hari";
+        }
+
+        $sisaHari = (int) $this->today()->diffInDays($this->effectiveDueDate(), false);
+
+        return $sisaHari > 0 ? "Jatuh tempo {$sisaHari} hari lagi" : 'Jatuh tempo hari ini';
+    }
+
+    public function timelinessColor(): string
+    {
+        $late = $this->daysLate();
+
+        return match (true) {
+            $late === null    => 'gray',
+            $this->isLunas()  => $late > 0 ? 'warning' : 'success',
+            $late > 30        => 'danger',
+            $late > 0         => 'warning',
+            default           => 'info',
+        };
+    }
+
+    private function today(): Carbon
+    {
+        return Carbon::today(optional($this->company)->timezone ?? config('app.timezone'));
+    }
+
     /** Kategori aging: lancar / perhatian / overdue */
     public function getAgingCategoryAttribute(): string
     {

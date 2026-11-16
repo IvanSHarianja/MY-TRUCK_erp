@@ -16,4 +16,18 @@ class EditClient extends EditRecord
             DeleteAction::make(),
         ];
     }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            \App\Filament\Resources\Clients\Widgets\ClientPaymentSummary::class,
+        ];
+    }
+
+    protected function getFooterWidgets(): array
+    {
+        return [
+            \App\Filament\Resources\Clients\Widgets\ClientPaymentHistory::class,
+        ];
+    }
 }

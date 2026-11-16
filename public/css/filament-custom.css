@@ -501,6 +501,18 @@ textarea:focus {
     border: 1px solid #FECACA;
 }
 
+.report-badge-warning {
+    background: #FFFBEB;
+    color: #B45309;
+    border: 1px solid #FDE68A;
+}
+
+/* Badge & teks bantu di dalam baris tabel laporan (Laporan Piutang) */
+.report-table .report-badge { padding: 0.125rem 0.5rem; font-size: 0.75rem; white-space: nowrap; }
+.report-table .muted,
+.report-table tr.muted td { color: var(--mt-text-muted); }
+.report-table span.code { font-family: 'SF Mono', 'Consolas', monospace; font-size: 0.75rem; color: var(--mt-text-muted); }
+
 /* === Balance Sheet 2-column grid === */
 .report-bs-grid {
     display: grid;

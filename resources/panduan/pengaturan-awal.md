@@ -5,7 +5,11 @@ Lakukan langkah ini sekali, saat PT baru didaftarkan. Urutannya penting karena t
 Isi nama perusahaan, tahun buku, dan periode buku. Pada **Cara Setup**, pilih salah satu:
 
 - **Standar (Rekomendasi)** — otomatis membuat daftar akun (COA), 5 lini bisnis, dan material default. Cocok untuk sebagian besar perusahaan alat berat/dump truck.
-- **Import COA dari Excel** — untuk perusahaan yang sudah punya COA sendiri (mis. dari MYOB/Accurate/Zahir). Klik **Download Template Excel**, isi, lalu unggah. Setelah import, akun berkode sendiri **belum punya Peran** — lengkapi sesuai [Paket Akun per Fitur](#coa-paket).
+- **Import COA dari Excel** — untuk perusahaan yang sudah punya COA sendiri (mis. dari MYOB/Accurate/Zahir). Dua format diterima:
+  - **Template MY-TRUCK**: klik **Download Template Excel**, isi, lalu unggah.
+  - **File COA perusahaan sendiri** dengan judul kolom **KODE, NAMA AKUN, TYPE** (Header/Child), boleh ditambah Kategori, Sub-Kategori, Saldo Normal, Arus Kas, Peran. Kode induk ditebak dari urutan kode (111001 di bawah header 111000), dan baris tanpa TYPE (slot cadangan) dilewati.
+
+  Setelah import, buka **Daftar Akun**: bagian atasnya menyebut fitur yang **Perannya belum lengkap**. Akun yang Perannya ditebak dari nama bercatatan *"mohon periksa"*. Lengkapi sesuai [Paket Akun per Fitur](#coa-paket) sebelum bertransaksi.
 - **Kosongan** — Anda membuat COA manual. Buat akun sesuai [Paket Akun per Fitur](#coa-paket) sebelum bertransaksi; tanpa itu sebagian fitur otomatis gagal atau jurnalnya tidak lengkap.
 
 ### 2. Lengkapi profil PT
@@ -29,4 +33,4 @@ Buat jurnal di **Jurnal Umum** dengan **Jenis Bukti: Saldo Awal**, contoh untuk 
 
 ### 5. Isi master data
 
-Klien, Vendor, Karyawan (operator/supir), serta **Armada & Alat Berat**. Setelah itu kontrak dan transaksi siap dibuat.
+Klien, Vendor, Karyawan (operator/supir), serta **Armada & Alat Berat**. Klien dan Vendor bisa dimasukkan sekaligus lewat tombol **Import Excel** di halamannya. Setelah itu kontrak dan transaksi siap dibuat.

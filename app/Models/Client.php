@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToCompany;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 
 class Client extends Model
 {
@@ -32,6 +33,12 @@ class Client extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class);
+    }
+
+    /** Semua pembayaran klien ini (lewat invoice-nya) — untuk riwayat pembayaran. */
+    public function payments(): HasManyThrough
+    {
+        return $this->hasManyThrough(Payment::class, Invoice::class);
     }
 
     /** Total piutang berjalan (status terbit + sebagian) */

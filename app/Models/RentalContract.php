@@ -122,6 +122,13 @@ class RentalContract extends Model
 
     protected static function booted(): void
     {
+        // Kolom include_* selalu turunan tipe_rental (lihat includesBbm()) —
+        // form tidak punya field-nya, jadi tanpa ini nilainya bisa basi.
+        static::saving(function (RentalContract $contract) {
+            $contract->include_bbm      = $contract->includesBbm();
+            $contract->include_operator = $contract->includesOperator();
+        });
+
         static::deleting(function (RentalContract $contract) {
             if ((float) $contract->billed_jam > 0) {
                 throw new \RuntimeException(

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountRole;
 use App\Models\Account;
 use App\Models\Company;
+use App\Services\Import\LabeledCoaParser;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -36,6 +37,17 @@ class CoaImportService
     /** Ikut batas model — jangan di-hardcode ulang di sini. */
     private const CODE_MAX_LENGTH = Account::CODE_MAX_LENGTH;
 
+    /**
+     * Ringkasan import terakhir: format, jumlah akun, slot dilewati, peran terisi.
+     * Dipakai notifikasi setelah daftar PT.
+     */
+    public array $report = [];
+
+    public function __construct(private ?LabeledCoaParser $labeledParser = null)
+    {
+        $this->labeledParser ??= new LabeledCoaParser();
+    }
+
     public function seedFromExcel(Company $company, string $absoluteFilePath): int
     {
         $rows = $this->parseAndValidate($absoluteFilePath);
@@ -48,9 +60,11 @@ class CoaImportService
             $inserted = 0;
 
             foreach ($rows as $row) {
-                $normalBalance = in_array($row['category'], ['aset', 'beban'], true)
+                // Format berlabel membawa saldo normal, sub-kategori, arus kas & peran
+                // sendiri; format standar tidak → default per kategori / kode standar.
+                $normalBalance = $row['normal_balance'] ?? (in_array($row['category'], ['aset', 'beban'], true)
                     ? 'debit'
-                    : 'kredit';
+                    : 'kredit');
 
                 // withoutGlobalScopes: saat register PT baru Filament::getTenant()
                 // masih null. Dengan STRICT_TENANT_SCOPE aktif, BelongsToCompany
@@ -62,10 +76,16 @@ class CoaImportService
                         'code'           => $row['code'],
                         'name'           => $row['name'],
                         'category'       => $row['category'],
-                        'parent_code'    => $row['parent_code'],
-                        'normal_balance' => $normalBalance,
-                        'role'           => $roleMapping[$row['code']] ?? null,
-                        'is_active'      => true,
+                        'parent_code'        => $row['parent_code'],
+                        'normal_balance'     => $normalBalance,
+                        'sub_category'       => $row['sub_category'] ?? null,
+                        'cash_flow_category' => $row['cash_flow_category'] ?? null,
+                        'role'               => $row['role'] ?? $roleMapping[$row['code']] ?? null,
+                        // Peran hasil tebakan nama → tandai supaya ditinjau (lihat LabeledCoaParser).
+                        'notes'              => ! empty($row['role_guessed'])
+                            ? 'Peran diisi otomatis dari nama akun saat import — mohon periksa.'
+                            : null,
+                        'is_active'          => true,
                     ],
                 );
                 $inserted++;
@@ -100,23 +120,29 @@ class CoaImportService
         $sheet = $spreadsheet->getActiveSheet();
         $raw = $sheet->toArray(null, true, true, false);
 
-        if (count($raw) < 2) {
-            throw ValidationException::withMessages([
-                'coa_excel_path' => 'File Excel kosong. Minimal harus ada 1 baris header + 1 baris data.',
-            ]);
-        }
-
         $header = array_map(
             fn ($c) => strtolower(trim((string) $c)),
-            array_slice($raw[0], 0, 4),
+            array_slice($raw[0] ?? [], 0, 4),
         );
 
         $expected = ['kode', 'nama akun', 'kategori', 'kode parent'];
         if ($header !== $expected) {
+            // Bukan template MY-TRUCK → coba format COA berlabel milik klien
+            // (judul kolom KODE / NAMA AKUN / TYPE di baris & sheet mana pun).
+            if ($found = $this->labeledParser->detect($spreadsheet)) {
+                return $this->finishLabeled($spreadsheet, $found);
+            }
+
             throw ValidationException::withMessages([
-                'coa_excel_path' => 'Header Excel tidak sesuai template. Kolom yang diharapkan: '
+                'coa_excel_path' => 'Format Excel tidak dikenali. Gunakan template MY-TRUCK (kolom: '
                     . implode(' | ', array_map('ucwords', $expected))
-                    . '. Download ulang template dari halaman ini.',
+                    . ') atau file COA dengan judul kolom KODE, NAMA AKUN, dan TYPE (Header/Child).',
+            ]);
+        }
+
+        if (count($raw) < 2) {
+            throw ValidationException::withMessages([
+                'coa_excel_path' => 'File Excel kosong. Minimal harus ada 1 baris header + 1 baris data.',
             ]);
         }
 
@@ -236,10 +262,41 @@ class CoaImportService
             ]);
         }
 
+        $this->report = ['format' => 'template MY-TRUCK', 'imported' => count($rows), 'skipped_slots' => 0, 'roles' => null];
+
         return array_map(function ($r) {
             unset($r['_row_num']);
             return $r;
         }, $rows);
+    }
+
+    /** Validasi lanjutan & kumpulan error untuk format berlabel. */
+    private function finishLabeled(\PhpOffice\PhpSpreadsheet\Spreadsheet $spreadsheet, array $found): array
+    {
+        ['rows' => $rows, 'errors' => $errors] = $this->labeledParser->parse($spreadsheet, $found);
+
+        if (empty($rows) && empty($errors)) {
+            $errors[] = 'Tabel COA ditemukan, tetapi tidak ada akun ber-TYPE (Header/Child).';
+        }
+
+        $byCode = array_column($rows, null, 'code');
+        foreach ($rows as $r) {
+            if ($r['parent_code'] !== null && ($byCode[$r['parent_code']]['category'] ?? null) !== $r['category']) {
+                $errors[] = "Akun '{$r['code']} {$r['name']}' berkategori '{$r['category']}' tetapi induknya '{$r['parent_code']}' "
+                    . "berkategori '" . ($byCode[$r['parent_code']]['category'] ?? '?') . "'. Samakan kategorinya di file.";
+            }
+        }
+
+        if ($errors) {
+            throw ValidationException::withMessages([
+                'coa_excel_path' => implode("\n", array_slice($errors, 0, 30))
+                    . (count($errors) > 30 ? "\n\n... dan " . (count($errors) - 30) . ' error lain (ditampilkan 30 pertama).' : ''),
+            ]);
+        }
+
+        $this->report = $this->labeledParser->report;
+
+        return $rows;
     }
 
     /**

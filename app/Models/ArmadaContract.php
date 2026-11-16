@@ -115,6 +115,14 @@ class ArmadaContract extends Model
 
     protected static function booted(): void
     {
+        // Kolom include_* selalu turunan tipe_kontrak (lihat includesBbm()).
+        // Form tidak punya field-nya, jadi tanpa ini nilainya bisa basi
+        // (KA26-0002: Alat Saja tapi include_* = 1).
+        static::saving(function (ArmadaContract $contract) {
+            $contract->include_bbm      = $contract->includesBbm();
+            $contract->include_operator = $contract->includesOperator();
+        });
+
         // Block hapus jika sudah ada invoice atau billed_rit > 0
         static::deleting(function (ArmadaContract $contract) {
             if ((int) $contract->billed_rit > 0) {

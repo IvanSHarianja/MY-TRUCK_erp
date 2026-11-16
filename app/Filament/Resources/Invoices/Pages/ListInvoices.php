@@ -13,6 +13,13 @@ class ListInvoices extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            \Filament\Actions\Action::make('report')
+                ->label('Laporan Piutang')
+                ->icon(\Filament\Support\Icons\Heroicon::OutlinedChartBar)
+                ->color('gray')
+                ->url(fn (): string => InvoiceResource::getUrl('report'))
+                ->visible(fn (): bool => ReceivableReport::canAccess()),
+
             CreateAction::make()
                 ->label('Buat Invoice Baru'),
         ];

@@ -3,6 +3,7 @@
 use App\Http\Controllers\CoaTemplateController;
 use App\Http\Controllers\PanduanController;
 use App\Http\Controllers\PdfController;
+use App\Http\Controllers\ReceivableExportController;
 use App\Http\Controllers\SopExportController;
 use Illuminate\Support\Facades\Route;
 
@@ -71,3 +72,8 @@ Route::middleware(['web', 'auth', 'throttle:5,1'])
     ->get('/export/{tenant:slug}/sop/{file}.xlsx', SopExportController::class)
     ->whereIn('file', array_column(\App\Services\Export\SopFile::cases(), 'value'))
     ->name('export.sop');
+
+/** Excel Laporan Tagihan & Piutang (izin dicek di controller). */
+Route::middleware(['web', 'auth', 'throttle:20,1'])
+    ->get('/export/{tenant:slug}/piutang.xlsx', ReceivableExportController::class)
+    ->name('export.piutang');
