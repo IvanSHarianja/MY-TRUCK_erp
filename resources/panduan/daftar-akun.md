@@ -17,15 +17,18 @@ Daftar Akun (Chart of Accounts / COA) adalah fondasi semua pencatatan. Setiap tr
 
 Sub-akun memakai kode induk + nomor urut: **111100-01**, **111100-02**, dst.
 
-### Akun HEADER vs sub-akun
+### Akun Induk vs akun Transaksi
 
-- **HEADER** = akun induk yang punya sub-akun. Tidak bisa dipakai di jurnal — saldonya penjumlahan sub-akun.
-- **Sub-akun (postable)** = akun yang dipakai transaksi.
-- Begitu sebuah akun diberi sub-akun, akun itu otomatis menjadi HEADER.
+Kolom **Tipe** di daftar menunjukkan:
+
+- **Induk** (HEADER) = akun yang punya sub-akun. Tidak bisa dipakai di jurnal — saldonya penjumlahan sub-akun. Di daftar, sub-akun tampil menjorok ke dalam di bawah induknya.
+- **Transaksi** = akun yang dipakai di jurnal.
+- Begitu sebuah akun diberi sub-akun, akun itu otomatis menjadi Induk.
+- Peran pada akun Induk tampil **abu-abu**: peran itu hanya diwariskan ke sub-akun baru, jurnal otomatis selalu memakai akun Transaksi.
 
 ### Cara menambah akun, langkah demi langkah
 
-**Cara termudah — sub-akun dari akun yang sudah ada:** klik **+ Sub-Akun** pada baris akun induk. Form terbuka dengan kode sub-akun sudah disarankan, dan **Kategori, Sub-Kategori, Saldo Normal, Kategori Arus Kas, serta Peran otomatis diwarisi dari induk**. Anda cukup mengisi nama.
+**Cara termudah — sub-akun dari akun yang sudah ada:** klik **Sub-Akun** pada baris akun induk (tombol hanya tampil bagi peran yang punya izin *CRUD Chart of Accounts*). Form terbuka dengan kode sub-akun sudah disarankan, dan **Kategori, Sub-Kategori, Saldo Normal, Kategori Arus Kas, serta Peran otomatis diwarisi dari induk**. Anda cukup mengisi nama.
 
 **Akun baru tanpa induk:**
 
@@ -49,7 +52,9 @@ Transaksi otomatis tidak mencari akun berdasarkan nama, tetapi berdasarkan **Per
 
 Template berisi 4 kolom: **Kode**, **Nama Akun**, **Kategori** (aset/kewajiban/ekuitas/pendapatan/beban), dan **Kode Parent** (opsional). Semua kesalahan ditampilkan sekaligus supaya bisa diperbaiki dalam satu kali unggah.
 
-Setelah import, **wajib cek**:
+Setelah import, kotak kuning di atas daftar menyebut fitur yang **Perannya belum lengkap** (klik **Lihat rincian**), dan tautan **Periksa akun ini** menampilkan akun yang Perannya ditebak dari nama (bertanda ⚠ di kolom Peran). Filter **Perlu Diperiksa** juga bisa menampilkan *akun transaksi tanpa Peran*.
+
+Selain itu, **wajib cek**:
 
 - Akun dengan **kode standar** (111100, 441100, dst) otomatis mendapat Peran. Akun dengan **kode sendiri** belum punya Peran — buka tiap akun penting dan isi Perannya, mengacu ke [Paket Akun per Fitur](#coa-paket).
 - Tanpa Peran, sub-kategori ditebak dari kategori: semua aset dianggap **Aset Lancar**, semua beban dianggap **Beban Operasional**. Perbaiki aset tetap, akumulasi penyusutan, dan beban HPP.
@@ -67,5 +72,5 @@ Setelah import, **wajib cek**:
 ### Tips
 
 - Buat satu sub-akun per rekening bank — mutasi per rekening terlihat di **Posisi Kas per Rekening** laporan Arus Kas.
-- Nonaktifkan akun yang tidak dipakai lagi daripada menghapusnya, agar histori tetap utuh. Akun HEADER yang masih punya sub-akun tidak bisa dihapus.
+- Nonaktifkan akun yang tidak dipakai lagi daripada menghapusnya, agar histori tetap utuh. Akun Induk yang masih punya sub-akun tidak bisa dihapus.
 - Kalau akun yang sudah punya transaksi ingin dipecah, gunakan **Migrasi ke Sub-Akun** — semua baris jurnal di akun induk dipindahkan ke sub-akun yang Anda pilih.

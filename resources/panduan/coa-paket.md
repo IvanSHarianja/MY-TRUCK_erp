@@ -19,7 +19,7 @@ Kolom **Peran** adalah pilihan di field *Peran Akun (Role)*. Kode dalam kurung a
 
 | Jika menambah… | Wajib | Catatan |
 |---|---|---|
-| Rekening bank baru | Buat sebagai **sub-akun 111100** dengan Peran **Kas & Bank Utama** | Pakai **+ Sub-Akun** pada 111100 — peran otomatis terwarisi |
+| Rekening bank baru | Buat sebagai **sub-akun 111100** dengan Peran **Kas & Bank Utama** | Pakai **Sub-Akun** pada 111100 — peran otomatis terwarisi |
 | Kas kecil lapangan baru | Sub-akun **111110**, Peran **Kas Kecil Lapangan** | |
 | Rekening apa pun | Jurnal **Saldo Awal** untuk rekening itu | Tanpa saldo awal, rekening tampil minus |
 

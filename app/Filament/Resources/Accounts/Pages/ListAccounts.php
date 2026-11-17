@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Accounts\Pages;
 
 use App\Filament\Resources\Accounts\AccountResource;
+use App\Filament\Resources\Accounts\Widgets\AccountRoleReadinessNotice;
 use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
@@ -19,19 +20,11 @@ class ListAccounts extends ListRecords
 
     /**
      * Peringatan peran akun yang belum lengkap (terutama setelah import COA
-     * dengan kode non-standar) + jumlah peran hasil tebakan yang perlu ditinjau.
+     * dengan kode non-standar) — dulu subjudul satu paragraf panjang, sekarang
+     * kotak ringkas yang rinciannya bisa dibuka.
      */
-    public function getSubheading(): ?string
+    protected function getHeaderWidgets(): array
     {
-        $tenant  = \Filament\Facades\Filament::getTenant();
-        $summary = \App\Support\AccountRoleReadiness::summary($tenant->getKey());
-        $guessed = \App\Models\Account::query()->where('notes', 'like', 'Peran diisi otomatis%')->count();
-
-        $parts = array_filter([
-            $summary,
-            $guessed > 0 ? "{$guessed} akun berperan hasil tebakan saat import — buka akunnya, periksa Peran, lalu hapus catatannya." : null,
-        ]);
-
-        return $parts ? implode(' ', $parts) : null;
+        return [AccountRoleReadinessNotice::class];
     }
 }

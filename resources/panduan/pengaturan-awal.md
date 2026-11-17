@@ -18,7 +18,7 @@ Buka menu PT (pojok kiri atas) → profil. Isi **Harga Solar Default (Rp/liter)*
 
 ### 3. Buat sub-akun kas & bank
 
-Di **Daftar Akun (COA)**, pada akun **111100 Kas dan Bank** klik **+ Sub-Akun** untuk tiap rekening (mis. "Mandiri - 1234", "BCA - 5678"). Transaksi kas selalu memakai sub-akun, bukan akun induknya.
+Di **Daftar Akun (COA)**, pada akun **111100 Kas dan Bank** klik **Sub-Akun** untuk tiap rekening (mis. "Mandiri - 1234", "BCA - 5678"). Transaksi kas selalu memakai sub-akun, bukan akun induknya.
 
 ### 4. Catat saldo awal
 

@@ -69,16 +69,28 @@ class User extends Authenticatable implements FilamentUser, HasTenants
      */
     public function roleIn(Model $tenant): ?Role
     {
+        // Dipanggil di setiap cek izin — tabel 50 baris × beberapa aksi = ratusan
+        // query identik per halaman. Disimpan per instance user (= per request).
+        $key = (string) $tenant->getKey();
+        if (array_key_exists($key, $this->roleCache)) {
+            return $this->roleCache[$key];
+        }
+
         $pivot = $this->companies()
             ->where('companies.id', $tenant->getKey())
             ->first()
             ?->pivot;
 
-        if (! $pivot || ! $pivot->is_active) {
-            return null;
-        }
+        return $this->roleCache[$key] = ($pivot && $pivot->is_active) ? Role::tryFrom($pivot->role) : null;
+    }
 
-        return Role::tryFrom($pivot->role);
+    /** @var array<string, ?Role> tenant id → role, lihat roleIn() */
+    private array $roleCache = [];
+
+    /** Panggil setelah mengubah peran/status keanggotaan user ini di request yang sama. */
+    public function forgetRoleCache(): void
+    {
+        $this->roleCache = [];
     }
 
     /**

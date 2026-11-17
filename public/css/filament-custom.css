@@ -1037,3 +1037,77 @@ body:has(.mt-login-side) .fi-btn-color-primary:hover {
     /* Di layar sempit tombol topbar cukup ikon — teks disembunyikan */
     .panduan-topbar-label { display: none; }
 }
+
+/* ===== Daftar Akun: kotak peringatan Peran akun ===== */
+.coa-notice {
+    border: 1px solid var(--mt-accent-amber);
+    background: var(--mt-accent-amber-soft);
+    border-radius: 0.75rem;
+    font-size: 0.875rem;
+    color: var(--mt-text);
+}
+
+.coa-notice-block { padding: 0.75rem 1rem; }
+.coa-notice-block + .coa-notice-block { border-top: 1px solid var(--mt-accent-amber); }
+
+.coa-notice-summary,
+.coa-notice-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex-wrap: wrap;
+}
+
+.coa-notice-summary { cursor: pointer; list-style: none; }
+.coa-notice-summary::-webkit-details-marker { display: none; }
+.coa-notice-summary:focus-visible { outline: 2px solid var(--mt-accent-amber); outline-offset: 4px; border-radius: 0.25rem; }
+
+.coa-notice-icon { width: 1.25rem; height: 1.25rem; flex-shrink: 0; color: var(--mt-accent-amber); }
+
+.coa-notice-toggle,
+.coa-notice-link {
+    margin-left: auto;
+    font-weight: 600;
+    color: var(--mt-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    white-space: nowrap;
+}
+
+.coa-notice-toggle-close,
+details[open] .coa-notice-toggle-open { display: none; }
+details[open] .coa-notice-toggle-close { display: inline; }
+
+.coa-notice-list { margin: 0.75rem 0 0; display: grid; gap: 0.5rem; }
+
+.coa-notice-row {
+    display: grid;
+    grid-template-columns: minmax(10rem, 14rem) 1fr;
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.coa-notice-row dt { font-weight: 600; padding-top: 0.125rem; }
+.coa-notice-row dd { margin: 0; display: flex; flex-wrap: wrap; gap: 0.375rem; }
+
+.coa-notice-chip {
+    display: inline-block;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    background: var(--mt-surface);
+    border: 1px solid var(--mt-border);
+    font-size: 0.75rem;
+    line-height: 1.25rem;
+}
+
+.coa-notice-help { margin: 0.75rem 0 0; color: var(--mt-text-muted); font-size: 0.8125rem; }
+
+@media (max-width: 640px) {
+    .coa-notice-row { grid-template-columns: 1fr; gap: 0.25rem; }
+    .coa-notice-toggle, .coa-notice-link { margin-left: 0; }
+}
+
+/* ===== Daftar Akun: tabel ===== */
+.coa-code { font-variant-numeric: tabular-nums; color: var(--mt-text-muted); }
+.coa-name { display: inline-block; }
+.coa-name-header { font-weight: 600; }

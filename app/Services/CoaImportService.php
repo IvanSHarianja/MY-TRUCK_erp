@@ -38,6 +38,13 @@ class CoaImportService
     private const CODE_MAX_LENGTH = Account::CODE_MAX_LENGTH;
 
     /**
+     * Catatan penanda Peran hasil tebakan nama. Daftar Akun mencarinya lewat
+     * awalan (GUESSED_ROLE_PREFIX) — user menghapus catatan setelah memeriksa.
+     */
+    public const GUESSED_ROLE_NOTE   = 'Peran diisi otomatis dari nama akun saat import — mohon periksa.';
+    public const GUESSED_ROLE_PREFIX = 'Peran diisi otomatis';
+
+    /**
      * Ringkasan import terakhir: format, jumlah akun, slot dilewati, peran terisi.
      * Dipakai notifikasi setelah daftar PT.
      */
@@ -83,7 +90,7 @@ class CoaImportService
                         'role'               => $row['role'] ?? $roleMapping[$row['code']] ?? null,
                         // Peran hasil tebakan nama → tandai supaya ditinjau (lihat LabeledCoaParser).
                         'notes'              => ! empty($row['role_guessed'])
-                            ? 'Peran diisi otomatis dari nama akun saat import — mohon periksa.'
+                            ? self::GUESSED_ROLE_NOTE
                             : null,
                         'is_active'          => true,
                     ],
