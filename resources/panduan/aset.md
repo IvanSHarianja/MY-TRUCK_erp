@@ -1,5 +1,27 @@
 Daftar unit dump truck, alat berat, kendaraan operasional, dan peralatan kantor — beserta harga beli dan cara penyusutannya.
 
+### Import dari Excel
+
+Klik **Import Excel** di halaman Armada & Alat Berat, unggah daftar aset perusahaan, lalu klik **Baca & Pratinjau**. Data **belum tersimpan** sampai Anda menekan **Import N aset** di layar pratinjau.
+
+- Kolom dikenali dari **judulnya**: Kode / No Urut, Nama (atau Keterangan), Nopol, Tahun atau Tanggal Beli, Harga Beli, Jenis, Umur. Satu sheet boleh berisi beberapa tabel (mis. *Daftar Kendaraan* lalu *Daftar Alat Berat*).
+- Data yang kurang **tetap diimpor** dan ditandai:
+
+| Kondisi di Excel | Diisi sistem |
+|---|---|
+| Harga beli kosong | Rp 0 + tanda **Perlu dilengkapi** |
+| Hanya tahun | Tanggal beli **1 Juli** tahun tersebut (perkiraan) |
+| Tahun juga kosong | Tanggal hari ini + tanda **Perlu dilengkapi** |
+| Tanpa kode | Kode otomatis: DT-001, EXC-001, DZR-001, ALT-001 … |
+| Tanpa jenis | Ditebak dari nama (Dump → Dump Truck, Excavator/PC → Excavator, Dozer → Bulldozer) |
+| Keterangan "dijual" | Status **Non-Aktif** |
+
+- Semua aset hasil import memakai **garis lurus 8 tahun**. Ubah per aset bila perlu, sebelum ada jurnal penyusutan.
+- Kode, nopol, atau (untuk unit tanpa keduanya) nama yang **sudah ada dilewati**, jadi import aman diulang.
+- Setelah import, nyalakan filter **Perlu dilengkapi** di daftar aset. Tanda hilang sendiri begitu harga/tanggal beli diisi lewat **Edit**.
+
+> Import hanya mengisi **data unit**. Nilai buku aset lama (akumulasi penyusutan sebelum memakai MY-TRUCK) dicatat lewat jurnal **Saldo Awal** — lihat [Pengaturan Awal](#pengaturan-awal).
+
 ### Metode penyusutan
 
 | Metode | Kapan dipakai | Kapan dijurnal |

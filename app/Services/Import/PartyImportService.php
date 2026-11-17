@@ -38,40 +38,118 @@ class PartyImportService
         'npwp'    => ['npwp'],
     ];
 
+    public const VENDOR_TYPES = [
+        'bbm'       => 'BBM',
+        'sparepart' => 'Sparepart',
+        'kuari'     => 'Kuari / Material',
+        'leasing'   => 'Leasing',
+        'jasa'      => 'Jasa / Bengkel',
+        'lainnya'   => 'Lainnya',
+    ];
+
+    /** Kata badan usaha yang diabaikan saat mencari nama MIRIP ("PT Maju" ≈ "CV Maju"). */
+    private const ENTITY_WORDS = '/\b(pt|cv|ud|pd|tb|toko|firma|fa|koperasi|kop|tbk|persero)\b/u';
+
     /**
+     * Rencana import untuk layar pratinjau — tidak menyimpan apa pun.
+     *
+     * Per baris: kode final (termasuk kode otomatis), alasan dilewati (sudah
+     * ada), dan peringatan nama MIRIP dengan data lain — mis. "PT. Maju Jaya"
+     * vs "CV Maju Jaya". Nama yang hanya beda tanda baca/spasi/huruf besar
+     * dianggap SAMA dan dilewati.
+     *
+     * @param  'client'|'vendor'  $kind
+     * @return array{
+     *   rows: list<array<string, mixed>>,
+     *   summary: array{total: int, import: int, skip: int, similar: int, other_type: int, invalid: int},
+     *   sheet: string,
+     * }
+     */
+    public function preview(string $kind, int $companyId, string $path): array
+    {
+        $parsed = $this->parse($kind, $path, $sheet, $skippedType, $skippedInvalid);
+
+        $model    = $kind === 'client' ? Client::class : Vendor::class;
+        $prefix   = $kind === 'client' ? 'KL-' : 'VD-';
+        $existing = $model::withoutGlobalScopes()->where('company_id', $companyId)->get(['code', 'name']);
+        $codes    = $existing->pluck('code')->map(fn ($c) => mb_strtolower($c))->flip()->all();
+        $names    = $existing->mapWithKeys(fn ($e) => [$this->nameKey($e->name) => $e->name])->all();
+        $similar  = $existing->mapWithKeys(fn ($e) => [$this->similarKey($e->name) => $e->name])->all();
+        $nextNo   = $this->nextNumber($existing->pluck('code'), $prefix);
+
+        $rows = [];
+        foreach ($parsed as $r) {
+            $nameKey = $this->nameKey($r['name']);
+            $skip = match (true) {
+                $r['code'] !== null && isset($codes[mb_strtolower($r['code'])]) => "Kode {$r['code']} sudah ada",
+                isset($names[$nameKey])                                           => "Nama sudah ada ({$names[$nameKey]})",
+                default                                                           => null,
+            };
+
+            $simKey  = $this->similarKey($r['name']);
+            $warning = $skip === null && $simKey !== '' && isset($similar[$simKey])
+                ? "Mirip dengan \"{$similar[$simKey]}\" — pastikan bukan pihak yang sama"
+                : null;
+
+            $code = $r['code'];
+            $generated = false;
+            if ($skip === null) {
+                while ($code === null || isset($codes[mb_strtolower($code)])) {
+                    $code = $prefix . str_pad((string) $nextNo++, 3, '0', STR_PAD_LEFT);
+                    $generated = true;
+                }
+                $codes[mb_strtolower($code)] = true;
+                $names[$nameKey] = $r['name'];
+                $similar[$simKey] ??= $r['name'];
+            }
+
+            $rows[] = $r + [
+                'final_code'     => $code,
+                'code_generated' => $generated,
+                'vendor_type'    => $kind === 'vendor' ? $this->vendorType($r['desc'] . ' ' . $r['name']) : null,
+                'skip'           => $skip,
+                'warning'        => $warning,
+            ];
+        }
+
+        $toImport = array_filter($rows, fn ($r) => $r['skip'] === null);
+
+        return [
+            'rows'    => $rows,
+            'summary' => [
+                'total'      => count($rows),
+                'import'     => count($toImport),
+                'skip'       => count($rows) - count($toImport),
+                'similar'    => count(array_filter($toImport, fn ($r) => $r['warning'] !== null)),
+                'other_type' => $skippedType,
+                'invalid'    => $skippedInvalid,
+            ],
+            'sheet' => $sheet,
+        ];
+    }
+
+    /**
+     * Simpan hasil pratinjau. File dibaca ulang — isi pratinjau di browser
+     * tidak pernah dipakai sebagai sumber data.
+     *
      * @param  'client'|'vendor'  $kind
      * @return array{imported: int, skipped_existing: int, skipped_other_type: int, skipped_invalid: int, sheet: string}
      */
     public function import(string $kind, int $companyId, string $path): array
     {
-        $rows = $this->parse($kind, $path, $sheet, $skippedType, $skippedInvalid);
-
-        $model    = $kind === 'client' ? Client::class : Vendor::class;
-        $prefix   = $kind === 'client' ? 'KL-' : 'VD-';
-        $existing = $model::withoutGlobalScopes()->where('company_id', $companyId)->get(['code', 'name']);
-        $codes    = $existing->pluck('code')->map(fn ($c) => mb_strtolower($c))->flip();
-        $names    = $existing->pluck('name')->map(fn ($n) => $this->normName($n))->flip();
-        $nextNo   = $this->nextNumber($existing->pluck('code'), $prefix);
+        $preview = $this->preview($kind, $companyId, $path);
+        $model   = $kind === 'client' ? Client::class : Vendor::class;
 
         $imported = 0;
-        $skippedExisting = 0;
-
-        DB::transaction(function () use ($rows, $model, $companyId, $prefix, $kind, &$codes, &$names, &$nextNo, &$imported, &$skippedExisting) {
-            foreach ($rows as $r) {
-                $nameKey = $this->normName($r['name']);
-                if (($r['code'] !== null && isset($codes[mb_strtolower($r['code'])])) || isset($names[$nameKey])) {
-                    $skippedExisting++;
+        DB::transaction(function () use ($preview, $model, $companyId, $kind, &$imported) {
+            foreach ($preview['rows'] as $r) {
+                if ($r['skip'] !== null) {
                     continue;
-                }
-
-                $code = $r['code'];
-                while ($code === null || isset($codes[mb_strtolower($code)])) {
-                    $code = $prefix . str_pad((string) $nextNo++, 3, '0', STR_PAD_LEFT);
                 }
 
                 $data = [
                     'company_id'     => $companyId,
-                    'code'           => $code,
+                    'code'           => $r['final_code'],
                     'name'           => $r['name'],
                     'contact_person' => $r['contact'],
                     'phone'          => $r['phone'],
@@ -81,22 +159,19 @@ class PartyImportService
                     'is_active'      => true,
                 ];
                 if ($kind === 'vendor') {
-                    $data['type'] = $this->vendorType($r['desc'] . ' ' . $r['name']);
+                    $data['type'] = $r['vendor_type'];
                 }
                 $model::withoutGlobalScopes()->create($data);
-
-                $codes[mb_strtolower($code)] = true;
-                $names[$nameKey] = true;
                 $imported++;
             }
         });
 
         return [
             'imported'           => $imported,
-            'skipped_existing'   => $skippedExisting,
-            'skipped_other_type' => $skippedType,
-            'skipped_invalid'    => $skippedInvalid,
-            'sheet'              => $sheet,
+            'skipped_existing'   => $preview['summary']['skip'],
+            'skipped_other_type' => $preview['summary']['other_type'],
+            'skipped_invalid'    => $preview['summary']['invalid'],
+            'sheet'              => $preview['sheet'],
         ];
     }
 
@@ -267,9 +342,16 @@ class PartyImportService
         return $v === '' ? null : $v;
     }
 
-    private function normName(string $name): string
+    /** Nama yang dianggap SAMA: beda huruf besar, spasi, atau tanda baca ("PT. Maju" = "pt maju"). */
+    private function nameKey(string $name): string
     {
-        return mb_strtolower(preg_replace('/\s+/', ' ', trim($name)));
+        return preg_replace('/[^\p{L}\p{N}]/u', '', mb_strtolower($name));
+    }
+
+    /** Nama yang MIRIP: sama setelah kata badan usaha dibuang ("PT Maju Jaya" ≈ "CV Maju Jaya"). */
+    private function similarKey(string $name): string
+    {
+        return preg_replace('/[^\p{L}\p{N}]/u', '', preg_replace(self::ENTITY_WORDS, ' ', mb_strtolower($name)));
     }
 
     private function nextNumber(\Illuminate\Support\Collection $codes, string $prefix): int

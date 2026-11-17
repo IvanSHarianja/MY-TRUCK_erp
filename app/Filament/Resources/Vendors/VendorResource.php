@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Vendors;
 
 use App\Filament\Resources\Vendors\Pages\CreateVendor;
+use App\Filament\Resources\Vendors\Pages\ImportVendors;
 use App\Filament\Resources\Vendors\Pages\EditVendor;
 use App\Filament\Resources\Vendors\Pages\ListVendors;
 use App\Filament\Resources\Vendors\Schemas\VendorForm;
@@ -43,6 +44,7 @@ class VendorResource extends Resource
         return [
             'index'  => ListVendors::route('/'),
             'create' => CreateVendor::route('/create'),
+            'import' => ImportVendors::route('/import'),
             'edit'   => EditVendor::route('/{record}/edit'),
         ];
     }

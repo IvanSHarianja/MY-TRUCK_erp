@@ -13,11 +13,6 @@ class ListVendors extends ListRecords
 
     protected static string $resource = VendorResource::class;
 
-    protected function partyKind(): string
-    {
-        return 'vendor';
-    }
-
     protected function getHeaderActions(): array
     {
         return [

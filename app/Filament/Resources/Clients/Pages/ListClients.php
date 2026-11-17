@@ -13,11 +13,6 @@ class ListClients extends ListRecords
 
     protected static string $resource = ClientResource::class;
 
-    protected function partyKind(): string
-    {
-        return 'client';
-    }
-
     protected function getHeaderActions(): array
     {
         return [

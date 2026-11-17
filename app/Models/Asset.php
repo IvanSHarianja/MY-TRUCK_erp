@@ -63,6 +63,16 @@ class Asset extends Model
      */
     protected static function booted(): void
     {
+        // Tanda "Perlu dilengkapi: harga beli, tanggal beli." dari import Excel
+        // hilang sendiri begitu isian itu dilengkapi lewat form Edit.
+        static::updating(function (Asset $asset) {
+            $asset->notes = \App\Services\Import\AssetImportService::resolveIncompleteNote(
+                $asset->notes,
+                priceFilled: (float) $asset->purchase_price > 0,
+                dateChanged: $asset->isDirty('purchase_date'),
+            );
+        });
+
         static::updating(function (Asset $asset) {
             if (! $asset->isDirty('depreciation_method')) {
                 return;

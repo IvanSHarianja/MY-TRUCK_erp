@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Assets;
 
 use App\Filament\Resources\Assets\Pages\CreateAsset;
 use App\Filament\Resources\Assets\Pages\EditAsset;
+use App\Filament\Resources\Assets\Pages\ImportAssets;
 use App\Filament\Resources\Assets\Pages\ListAssets;
 use App\Filament\Resources\Assets\RelationManagers\MaintenanceLogsRelationManager;
 use App\Filament\Resources\Assets\Schemas\AssetForm;
@@ -51,6 +52,7 @@ class AssetResource extends Resource
         return [
             'index'  => ListAssets::route('/'),
             'create' => CreateAsset::route('/create'),
+            'import' => ImportAssets::route('/import'),
             'edit'   => EditAsset::route('/{record}/edit'),
         ];
     }
