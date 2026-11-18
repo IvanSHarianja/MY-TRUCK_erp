@@ -39,4 +39,29 @@ final class DocumentSequence
 
         return $prefix . str_pad((string) $next, $padLength, '0', STR_PAD_LEFT);
     }
+
+    /**
+     * Jalankan pembuatan dokumen bernomor; bila nomor bentrok (dua simpan
+     * bersamaan mengambil nomor yang sama) ulangi dengan nomor baru.
+     * $create HARUS memanggil next() di dalamnya supaya tiap percobaan
+     * membaca nomor terakhir yang baru. Savepoint per percobaan menjaga
+     * transaksi pemanggil tetap utuh.
+     *
+     * @template T
+     * @param  callable(): T  $create
+     * @return T
+     */
+    public static function createWithRetry(callable $create, int $attempts = 5): mixed
+    {
+        for ($i = 1; ; $i++) {
+            try {
+                return \Illuminate\Support\Facades\DB::transaction($create);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                if ($i >= $attempts) {
+                    throw $e;
+                }
+                usleep(random_int(5_000, 30_000) * $i);
+            }
+        }
+    }
 }

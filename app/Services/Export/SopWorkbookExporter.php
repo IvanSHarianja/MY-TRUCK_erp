@@ -33,6 +33,8 @@ use PhpOffice\PhpSpreadsheet\Writer\Xlsx as XlsxWriter;
  * Bentuk payload:
  *   cells    : [sheet => [coord => nilai]]  nilai: string|int|float|DateTimeInterface|null
  *   clear    : [sheet => [range, ...]]      dikosongkan sebelum cells ditulis
+ *   extra    : [sheet => [headers, rows]]   (opsional) sheet BARU di akhir workbook untuk
+ *              data yang tidak punya sheet di template SOP (mis. Pemakaian Unit proyek)
  *   counts   : [label => jumlah]            ringkasan untuk UI/command
  *   warnings : [pesan, ...]
  */
@@ -111,19 +113,44 @@ abstract class SopWorkbookExporter
             $sheet = $this->sheet($spreadsheet, $sheetName);
 
             foreach ($cells as $coord => $value) {
-                $cell = $sheet->getCell($coord);
+                $this->writeCell($sheet, $coord, $value);
+            }
+        }
 
-                if ($value === null) {
-                    $cell->setValueExplicit(null, DataType::TYPE_NULL);
-                } elseif ($value instanceof DateTimeInterface) {
-                    $cell->setValueExplicit(ExcelDate::PHPToExcel($value), DataType::TYPE_NUMERIC);
-                    $sheet->getStyle($coord)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
-                } elseif (is_int($value) || is_float($value)) {
-                    $cell->setValueExplicit($value, DataType::TYPE_NUMERIC);
-                } else {
-                    $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);
+        // Sheet TAMBAHAN (data MY-TRUCK yang tidak punya sheet di template SOP),
+        // ditambahkan di akhir workbook: judul kolom baris 1, data mulai baris 2.
+        foreach ($payload['extra'] ?? [] as $sheetName => $table) {
+            $sheet = $spreadsheet->getSheetByName($sheetName) ?? $spreadsheet->createSheet()->setTitle($sheetName);
+            foreach ($table['headers'] as $i => $header) {
+                $this->writeCell($sheet, Coordinate::stringFromColumnIndex($i + 1) . '1', $header);
+            }
+            $sheet->getStyle('A1:' . Coordinate::stringFromColumnIndex(max(1, count($table['headers']))) . '1')->getFont()->setBold(true);
+            $sheet->freezePane('A2');
+
+            foreach ($table['rows'] as $r => $row) {
+                foreach (array_values($row) as $i => $value) {
+                    $this->writeCell($sheet, Coordinate::stringFromColumnIndex($i + 1) . ($r + 2), $value);
                 }
             }
+            foreach (range(1, count($table['headers'])) as $col) {
+                $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($col))->setAutoSize(true);
+            }
+        }
+    }
+
+    private function writeCell(Worksheet $sheet, string $coord, mixed $value): void
+    {
+        $cell = $sheet->getCell($coord);
+
+        if ($value === null) {
+            $cell->setValueExplicit(null, DataType::TYPE_NULL);
+        } elseif ($value instanceof DateTimeInterface) {
+            $cell->setValueExplicit(ExcelDate::PHPToExcel($value), DataType::TYPE_NUMERIC);
+            $sheet->getStyle($coord)->getNumberFormat()->setFormatCode('dd/mm/yyyy');
+        } elseif (is_int($value) || is_float($value)) {
+            $cell->setValueExplicit($value, DataType::TYPE_NUMERIC);
+        } else {
+            $cell->setValueExplicit((string) $value, DataType::TYPE_STRING);   // cegah formula injection
         }
     }
 

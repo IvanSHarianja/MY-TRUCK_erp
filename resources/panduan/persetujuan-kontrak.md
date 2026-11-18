@@ -15,6 +15,7 @@ Di **Persetujuan Kontrak**, setiap pengajuan menampilkan perubahan dalam bentuk 
 - **Setujui**: nilai baru langsung berlaku di kontrak.
 - **Tolak**: alasan penolakan wajib diisi. Kontrak tidak berubah.
 - Pengaju bisa **Batalkan** pengajuannya sendiri selama belum diputuskan.
+- Mengubah status kontrak menjadi **Batal** ditolak selama masih ada ritase / jam kerja / mobilisasi yang **belum ditagih** — tagih dulu (atau hapus catatan yang salah), karena kontrak batal tidak bisa ditagih lagi.
 
 Owner yang mengubah kontrak sendiri melihat tombol **Simpan Perubahan**: perubahan langsung berlaku, tetapi alasan tetap wajib dan tercatat.
 

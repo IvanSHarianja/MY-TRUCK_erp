@@ -54,6 +54,21 @@ class CreateJournalEntry extends CreateRecord
         return $data;
     }
 
+    protected function getCreatedNotification(): ?\Filament\Notifications\Notification
+    {
+        $note = parent::getCreatedNotification();
+        if ($note && $this->getRecord()->needsOwnerApproval()
+            && ! \App\Filament\Resources\JournalEntries\Tables\JournalEntriesTable::canApproveTransfer()) {
+            $note->title('Draft tersimpan — menunggu persetujuan Owner')
+                ->body($this->getRecord()->document_type === 'saldo_awal'
+                    ? 'Jurnal Saldo Awal hanya bisa diposting Owner. Owner akan memeriksa lalu mempostingnya.'
+                    : 'Jurnal ini memindahkan dana antar rekening. Owner akan memeriksa lalu mempostingnya.')
+                ->warning();
+        }
+
+        return $note;
+    }
+
     protected function getRedirectUrl(): string
     {
         return $this->getResource()::getUrl('index');

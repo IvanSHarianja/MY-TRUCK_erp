@@ -25,6 +25,7 @@ class CreateMaterialPurchase extends CreateRecord
                 'unit_price'      => $data['unit_price'],
                 'payment_method'  => $data['payment_method'],
                 'cash_account_id' => $data['cash_account_id'] ?? null,
+                'due_date'        => $data['due_date'] ?? null,
                 'notes'           => $data['notes'] ?? null,
                 'bukti_tf_path'   => $data['bukti_tf_path'] ?? null,
                 'created_by'      => auth()->id(),

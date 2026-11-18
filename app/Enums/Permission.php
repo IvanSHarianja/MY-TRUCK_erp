@@ -41,6 +41,8 @@ enum Permission: string
     case JournalVoid       = 'journal.void';
     case QuickTransaction  = 'quick_tx.execute';
     case DepreciationRun   = 'depreciation.run';
+    case CashTransferApprove = 'cash_transfer.approve';   // Setujui pindah dana antar rekening (default: Owner)
+    case DebtManage        = 'debt.manage';               // Catat hutang/cicilan & bayar cicilan
 
     // === Laporan ===
     case ReportsView       = 'reports.view';
@@ -66,6 +68,8 @@ enum Permission: string
             self::JournalVoid            => 'Void Journal',
             self::QuickTransaction       => 'Quick Transaction',
             self::DepreciationRun        => 'Trigger Depresiasi Manual',
+            self::CashTransferApprove    => 'Posting Jurnal Pindah Dana Antar Rekening',
+            self::DebtManage             => 'Kelola Hutang & Bayar Cicilan',
             self::ReportsView            => 'Lihat Laporan Keuangan',
             self::ReportsExportPdf       => 'Export PDF Laporan',
         };
@@ -96,7 +100,9 @@ enum Permission: string
             self::JournalPost,
             self::JournalVoid,
             self::QuickTransaction,
-            self::DepreciationRun       => 'Financial',
+            self::DepreciationRun,
+            self::CashTransferApprove,
+            self::DebtManage            => 'Financial',
 
             self::ReportsView,
             self::ReportsExportPdf      => 'Laporan',

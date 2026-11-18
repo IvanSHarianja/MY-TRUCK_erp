@@ -220,6 +220,27 @@ return [
     'pengeluaran_borongan' => [
         'business_unit_code' => 'BONG',
         'items' => [
+            // Pemakaian alat berat & truk sendiri di proyek (Pemakaian Unit Harian).
+            // Tanpa baris ini BBM/premi proyek jatuh ke "Belum terpetakan" dan
+            // gaji operator proyek ke "GAJI KANTOR".
+            [
+                'label'       => 'BIAYA BBM BONG',
+                'description' => 'BBM Solar alat & truk di proyek',
+                'roles'       => [AccountRole::CogsBbm],
+                'direction'   => 'out',
+            ],
+            [
+                'label'       => 'BIAYA OPERATOR & SUPIR BONG',
+                'description' => 'Gaji operator / supir di proyek',
+                'roles'       => [AccountRole::OpexGaji],
+                'direction'   => 'out',
+            ],
+            [
+                'label'       => 'BIAYA PREMI & UANG MAKAN BONG',
+                'description' => 'Premi, uang jalan & uang makan di proyek',
+                'roles'       => [AccountRole::CogsPremiUangJalan],
+                'direction'   => 'out',
+            ],
             [
                 'label'       => 'BIAYA SUBKONTRAKTOR BONG',
                 'description' => 'Biaya Subkontraktor Proyek Borongan',

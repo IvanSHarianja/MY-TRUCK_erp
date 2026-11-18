@@ -69,6 +69,18 @@ class Project extends Model
         return $this->hasMany(ProjectTermin::class)->orderBy('termin_number');
     }
 
+    public function addendums(): HasMany
+    {
+        return $this->hasMany(ProjectAddendum::class)->orderBy('id');
+    }
+
+    /** Nilai kontrak awal + pekerjaan tambah yang sudah disetujui. */
+    public function nilaiKontrakTotal(): float
+    {
+        return (float) $this->nilai_kontrak
+            + (float) $this->addendums()->where('status', 'approved')->sum('nilai');
+    }
+
     /** Pemakaian alat berat & truk sendiri per hari (biaya proyek). */
     public function unitLogs(): HasMany
     {

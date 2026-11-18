@@ -34,6 +34,10 @@ class ProjectMarginService
         $ids = $projects->pluck('id');
         $termins = \App\Models\ProjectTermin::withoutGlobalScopes()->whereIn('project_id', $ids)
             ->groupBy('project_id')->selectRaw('project_id, SUM(amount) AS total')->pluck('total', 'project_id');
+        // Pekerjaan tambah yang disetujui (invoice-nya tidak di-void) = pendapatan proyek juga.
+        $addenda = \App\Models\ProjectAddendum::withoutGlobalScopes()->whereIn('project_id', $ids)
+            ->where('status', 'approved')
+            ->groupBy('project_id')->selectRaw('project_id, SUM(nilai) AS total')->pluck('total', 'project_id');
 
         $logs = ProjectUnitLog::withoutGlobalScopes()->with('asset')->whereIn('project_id', $ids)->get();
         $depuse = $logs->isEmpty() ? collect() : JournalEntry::withoutGlobalScopes()
@@ -46,7 +50,7 @@ class ProjectMarginService
             ->selectRaw('source_id, SUM(total_amount) AS total')
             ->pluck('total', 'source_id');
 
-        $rows = $projects->map(function (Project $p) use ($termins, $logs, $depuse) {
+        $rows = $projects->map(function (Project $p) use ($termins, $addenda, $logs, $depuse) {
             $own = $logs->where('project_id', $p->id);
 
             $units = $own->groupBy('asset_id')->map(fn ($g) => [
@@ -58,7 +62,7 @@ class ProjectMarginService
                 'penyusutan' => (float) $g->sum(fn ($l) => (float) ($depuse[$l->id] ?? 0)),
             ])->values();
 
-            $pendapatan = (float) ($termins[$p->id] ?? 0);
+            $pendapatan = (float) ($termins[$p->id] ?? 0) + (float) ($addenda[$p->id] ?? 0);
             $biaya = (float) $units->sum('biaya_kas') + (float) $units->sum('penyusutan');
             $margin = round($pendapatan - $biaya, 2);
 

@@ -29,7 +29,8 @@ class MaterialMarginService
             ->when($materialId, fn ($q) => $q->where('material_id', $materialId))
             ->orderBy('sale_date')->orderBy('sale_number')
             ->get()
-            ->reject(fn (MaterialSale $s) => $s->metode === 'invoice' && ($s->invoice_id === null || $s->invoice?->status === 'void'));
+            ->reject(fn (MaterialSale $s) => $s->isVoided()
+                || ($s->metode === 'invoice' && ($s->invoice_id === null || $s->invoice?->status === 'void')));
 
         $rows = $sales->map(function (MaterialSale $s) {
             $pendapatan = (float) $s->total;

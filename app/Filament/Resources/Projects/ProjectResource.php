@@ -50,6 +50,7 @@ class ProjectResource extends Resource
             ProgressUpdatesRelationManager::class,
             TerminsRelationManager::class,
             \App\Filament\Resources\Projects\RelationManagers\UnitLogsRelationManager::class,
+            \App\Filament\Resources\Projects\RelationManagers\AddendumsRelationManager::class,
         ];
     }
 

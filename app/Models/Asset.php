@@ -28,6 +28,7 @@ class Asset extends Model
         'monthly_target_hours',
         'salvage_value',
         'akumulasi_awal',
+        'akumulasi_awal_per',
         'account_id',
         'default_business_unit_id',
         'status',
@@ -46,6 +47,7 @@ class Asset extends Model
             'purchase_price'      => 'integer',
             'salvage_value'       => 'integer',
             'akumulasi_awal'      => 'integer',
+            'akumulasi_awal_per'  => 'date',
             'useful_life_months'  => 'integer',
             'depreciation_method' => DepreciationMethod::class,
             'useful_life_hours'   => 'decimal:2',
@@ -67,6 +69,8 @@ class Asset extends Model
     public const LOCKED_AFTER_DEPRECIATION = [
         'depreciation_method', 'type', 'purchase_price', 'salvage_value', 'purchase_date',
         'useful_life_months', 'akumulasi_awal',
+        // useful_life_hours/rits/days SENGAJA tidak dikunci: revisi estimasi umur
+        // pakai berlaku prospektif (PSAK 16 par. 51) — form memberi peringatan.
     ];
 
     private const LOCKED_LABELS = [
@@ -83,8 +87,18 @@ class Asset extends Model
     {
         // Tanda "Perlu dilengkapi: harga beli, tanggal beli." dari import Excel
         // hilang sendiri begitu isian itu dilengkapi lewat form Edit.
+        // Akumulasi awal = penyusutan s/d akhir bulan lalu (lihat estimatedAkumulasiAwal).
+        // Catat tanggalnya supaya bulan-bulan itu tidak disusutkan lagi oleh MY-TRUCK.
+        static::saving(function (Asset $asset) {
+            if ((float) $asset->akumulasi_awal <= 0) {
+                $asset->akumulasi_awal_per = null;
+            } elseif ($asset->akumulasi_awal_per === null || $asset->isDirty('akumulasi_awal')) {
+                $asset->akumulasi_awal_per = now()->subMonthNoOverflow()->endOfMonth()->toDateString();
+            }
+        });
+
         static::updating(function (Asset $asset) {
-            $asset->notes = \App\Services\Import\AssetImportService::resolveIncompleteNote(
+            $asset->notes =\App\Services\Import\AssetImportService::resolveIncompleteNote(
                 $asset->notes,
                 priceFilled: (float) $asset->purchase_price > 0,
                 dateChanged: $asset->isDirty('purchase_date'),
@@ -186,7 +200,9 @@ class Asset extends Model
             return 0;
         }
 
-        $start   = \Illuminate\Support\Carbon::parse($this->purchase_date)->startOfMonth();
+        // Sama dengan DepreciationService: bulan pembelian tidak disusutkan, mulai
+        // bulan berikutnya (dulu dihitung dari bulan beli → kelebihan 1 bulan).
+        $start   = \Illuminate\Support\Carbon::parse($this->purchase_date)->startOfMonth()->addMonthNoOverflow();
         $end     = \Illuminate\Support\Carbon::parse($asOf)->startOfMonth();
         $elapsed = max(0, ($end->year - $start->year) * 12 + ($end->month - $start->month));
 

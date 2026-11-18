@@ -52,6 +52,9 @@ final class RoleMatrix
                 Permission::JournalVoid,
                 Permission::QuickTransaction,
                 Permission::DepreciationRun,
+                // Pindah dana antar rekening = keputusan Owner (masukan 2026-11-18).
+                Permission::CashTransferApprove,
+                Permission::DebtManage,
                 Permission::ReportsView,
                 Permission::ReportsExportPdf,
             ],
@@ -72,9 +75,10 @@ final class RoleMatrix
                 Permission::JournalVoid,
                 Permission::QuickTransaction,
                 Permission::DepreciationRun,
+                Permission::DebtManage,
                 Permission::ReportsView,
                 Permission::ReportsExportPdf,
-                // BUKAN: RoleManage, CompanyDelete, PeriodClose (owner-only governance)
+                // BUKAN: RoleManage, CompanyDelete, PeriodClose, CashTransferApprove (owner-only)
             ],
 
             Role::Accountant => [
@@ -84,6 +88,7 @@ final class RoleMatrix
                 Permission::JournalPost,
                 Permission::QuickTransaction,
                 Permission::DepreciationRun,
+                Permission::DebtManage,
                 Permission::ReportsView,
                 Permission::ReportsExportPdf,
                 // BUKAN: void*, master data, user manage, period, activity log

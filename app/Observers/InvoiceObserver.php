@@ -40,9 +40,19 @@ class InvoiceObserver
                 'rental_contract' => $this->rollbackRental($invoice),
                 'project_termin'  => $this->rollbackProjectTermin($invoice),
                 'material_sale'   => $this->detachMaterialSale($invoice),
+                'project_addendum' => $this->voidProjectAddendum($invoice),
                 default           => null,
             };
         });
+    }
+
+    /** Invoice pekerjaan tambah di-void → nilai tambah tidak lagi dihitung ke kontrak. */
+    private function voidProjectAddendum(Invoice $invoice): void
+    {
+        \App\Models\ProjectAddendum::withoutGlobalScopes()
+            ->where('invoice_id', $invoice->id)
+            ->where('status', 'approved')
+            ->update(['status' => 'void', 'updated_at' => now()]);
     }
 
     private function rollbackArmada(Invoice $invoice): void
@@ -108,39 +118,8 @@ class InvoiceObserver
 
         if (! $termin) return;
 
-        // BUG-23: lockForUpdate
-        $project = Project::withoutGlobalScopes()
-            ->where('id', $termin->project_id)
-            ->lockForUpdate()
-            ->first();
-        if ($project) {
-            $newTertagih = max(0, round((float) $project->tertagih_pct - (float) $termin->termin_pct, 2));
-            // BUG-24: reopen ke 'berjalan' kalau tertagih_pct < 100
-            // (tidak peduli progress_pct — kalau sudah selesai tapi tertagih
-            // turun, user perlu bisa tagih ulang termin baru).
-            $newStatus = ($project->status === 'selesai' && $newTertagih < 100 - 0.005)
-                ? 'berjalan'
-                : $project->status;
-
-            $project->update([
-                'tertagih_pct' => $newTertagih,
-                'status'       => $newStatus,
-                // Potongan DP termin ini kembali menjadi sisa DP.
-                'dp_dipotong'  => max(0, round((float) $project->dp_dipotong - (float) $termin->dp_potong, 2)),
-            ]);
-        }
-
-        // Batalkan jurnal pemotongan DP (Dr Uang Muka / Cr Pendapatan) termin ini.
-        if ($termin->dp_journal_id) {
-            $dpJournal = \App\Models\JournalEntry::withoutGlobalScopes()->find($termin->dp_journal_id);
-            if ($dpJournal && $dpJournal->isPosted()) {
-                app(\App\Services\Accounting\JournalService::class)
-                    ->void($dpJournal, "Void invoice termin {$invoice->invoice_number}");
-            }
-        }
-
-        // Hapus termin record (atau bisa pakai soft delete kalau mau audit)
-        $termin->delete();
+        app(\App\Services\Accounting\ProjectService::class)
+            ->rollbackTermin($termin, "Void invoice termin {$invoice->invoice_number}");
     }
 
     private function detachMaterialSale(Invoice $invoice): void
@@ -150,92 +129,11 @@ class InvoiceObserver
             ->get();
 
         foreach ($sales as $sale) {
-            // BIZ-01: Restore stock kalau sale punya stock movement OUT.
-            // Sales yang legacy (pre-BIZ01, tanpa stock movement) di-skip.
-            $outMovement = \App\Models\MaterialStockMovement::withoutGlobalScopes()
-                ->where('source_type', MaterialSale::class)
-                ->where('source_id', $sale->id)
-                ->where('movement_type', 'out')
-                ->first();
-
-            if ($outMovement) {
-                $material = \App\Models\Material::withoutGlobalScopes()
-                    ->where('id', $sale->material_id)
-                    ->lockForUpdate()
-                    ->first();
-
-                if ($material) {
-                    $stockBefore = (float) $material->current_stock;
-                    $qtyRestore  = abs((float) $outMovement->qty_change);
-                    $stockAfter  = $stockBefore + $qtyRestore;
-
-                    \DB::table('materials')
-                        ->where('id', $material->id)
-                        ->update([
-                            'current_stock' => $stockAfter,
-                            // MAC tidak berubah — sale tidak affect MAC (hanya purchase)
-                            'updated_at'    => now(),
-                        ]);
-
-                    // Audit trail: adjustment movement restore
-                    \App\Models\MaterialStockMovement::create([
-                        'company_id'   => $material->company_id,
-                        'material_id'  => $material->id,
-                        'movement_type'=> 'adjustment',
-                        'source_type'  => MaterialSale::class,
-                        'source_id'    => $sale->id,
-                        'qty_change'   => $qtyRestore,
-                        'unit_cost'    => (float) $outMovement->unit_cost,
-                        'stock_before' => $stockBefore,
-                        'stock_after'  => $stockAfter,
-                        'mac_before'   => (float) $material->current_mac,
-                        'mac_after'    => (float) $material->current_mac,
-                        'movement_date'=> now()->toDateString(),
-                        'notes'        => "Restore stock void sale {$sale->sale_number} (invoice {$invoice->invoice_number})",
-                        'created_by'   => \Illuminate\Support\Facades\Auth::id(),
-                    ]);
-                }
-            }
-
-            $this->voidCogsJournal($sale);
-
-            // Penjualan batal → biaya pengirimannya ikut dibatalkan (bila penjualan
-            // dicatat ulang, biaya diinput lagi; tanpa ini biaya terhitung dua kali).
-            if ($sale->biaya_journal_id) {
-                $kirim = \App\Models\JournalEntry::withoutGlobalScopes()->find($sale->biaya_journal_id);
-                if ($kirim && $kirim->isPosted()) {
-                    app(\App\Services\Accounting\JournalService::class)->void($kirim, "Void penjualan {$sale->sale_number}");
-                }
-            }
+            // Stok kembali, HPP & biaya kirim dibalik (lihat MaterialSaleService::reverseSale).
+            app(\App\Services\Accounting\MaterialSaleService::class)
+                ->reverseSale($sale, "Void penjualan {$sale->sale_number} (invoice {$invoice->invoice_number})");
 
             $sale->update(['invoice_id' => null]);
-        }
-    }
-
-    /**
-     * Balik jurnal HPP penjualan (Dr HPP / Cr Persediaan). Dulu hanya stok yang
-     * dikembalikan: HPP tetap tercatat tanpa pendapatan dan saldo Persediaan di
-     * buku lebih kecil dari nilai stok fisik.
-     *
-     * Jurnal dicari lewat source (sejak 2026-11-17) atau — data lama tanpa
-     * source — No. Bukti "HPP-{no. penjualan}" berjenis jual_beli buatan sistem.
-     */
-    private function voidCogsJournal(MaterialSale $sale): void
-    {
-        $journals = \App\Models\JournalEntry::withoutGlobalScopes()
-            ->where('company_id', $sale->company_id)
-            ->where('status', 'posted')
-            ->where(function ($q) use ($sale) {
-                $q->where(fn ($s) => $s->where('source_type', $sale->getMorphClass())->where('source_id', $sale->id))
-                  ->orWhere(fn ($s) => $s->whereNull('source_type')
-                      ->where('document_type', 'jual_beli')
-                      ->where('document_number', 'HPP-' . $sale->sale_number));
-            })
-            ->get();
-
-        foreach ($journals as $journal) {
-            app(\App\Services\Accounting\JournalService::class)
-                ->void($journal, "Void penjualan {$sale->sale_number}");
         }
     }
 }

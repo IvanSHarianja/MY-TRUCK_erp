@@ -41,6 +41,8 @@ Untuk aset yang dibeli **sebelum** memakai MY-TRUCK, isi **Akumulasi Penyusutan 
 
 - Tanpa ini, aset lama tampil dengan nilai buku penuh: truk 2015 berumur 8 tahun tidak pernah disusutkan (umurnya sudah habis) tetapi nilainya tetap 100%.
 - Dengan akumulasi awal, MY-TRUCK hanya menyusutkan **sisa** nilainya, dan aset yang umurnya habis bernilai buku 0.
+- Akumulasi awal berlaku **s/d akhir bulan sebelum diisi** (tertulis di bawah isian). Menjalankan penyusutan untuk bulan-bulan itu dilewati otomatis, supaya tidak tersusutkan dua kali.
+- Perkiraan kalkulator tidak menghitung bulan pembelian (penyusutan mulai bulan berikutnya), sama seperti penyusutan bulanan.
 - Import Excel mengisi perkiraan ini otomatis.
 - Saldo di buku besar tetap dicatat sekali lewat jurnal **Saldo Awal**: Dr Aset Tetap (total harga beli) / Cr Akumulasi Penyusutan (total akumulasi awal) / Cr Modal (selisihnya).
 

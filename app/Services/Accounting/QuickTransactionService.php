@@ -150,6 +150,19 @@ class QuickTransactionService
             ]);
         }
 
+        // === Guard: hutang yang tercatat di menu Hutang & Cicilan dibayar dari sana ===
+        // Satu pintu (keputusan 2026-11-18): kalau dibayar dari sini, cicilannya
+        // tetap "belum lunas" di menu Hutang dan bisa terbayar dua kali.
+        if ($type === QuickTransactionType::BayarUtang
+            && \App\Models\Debt::withoutGlobalScopes()->where('company_id', $company->id)
+                ->where('payable_account_id', $fixedAccount->id)->where('status', 'aktif')->exists()) {
+            throw ValidationException::withMessages([
+                'type' => "Ada hutang vendor yang masih berjalan di menu Hutang & Cicilan untuk akun [{$fixedAccount->code}] {$fixedAccount->name}. "
+                    . 'Bayar lewat menu Hutang & Cicilan → Jadwal & Bayar, supaya cicilannya tercatat lunas. '
+                    . 'Hutang lama yang belum ada di sana: catat dulu lewat Catat Hutang (kosongkan "Dana Diterima di").',
+            ]);
+        }
+
         // === Guard: counterAccount tidak boleh sama dengan fixedAccount ===
         // Jurnal Dr X / Cr X (akun sama di kedua sisi) balanced tapi net = 0.
         // Ini gejala user salah pilih di dropdown counter (mis. pilih akun modal

@@ -29,6 +29,28 @@ class JournalEntryResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'entry_number';
 
+    /** Untuk Owner: jumlah draft pindah dana antar rekening yang menunggu diposting. */
+    public static function getNavigationBadge(): ?string
+    {
+        $tenant = \Filament\Facades\Filament::getTenant();
+        if (! $tenant || ! Tables\JournalEntriesTable::canApproveTransfer()) {
+            return null;
+        }
+        $n = JournalEntry::query()->pendingOwnerApproval($tenant->getKey())->count();
+
+        return $n > 0 ? (string) $n : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
+    public static function getNavigationBadgeTooltip(): ?string
+    {
+        return 'Pindah dana / saldo awal menunggu persetujuan';
+    }
+
     public static function form(Schema $schema): Schema
     {
         return JournalEntryForm::configure($schema);

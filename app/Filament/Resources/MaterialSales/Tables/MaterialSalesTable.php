@@ -64,7 +64,9 @@ class MaterialSalesTable
                     ->label('Metode')
                     ->badge()
                     ->color(fn (string $state) => $state === 'tunai' ? 'success' : 'warning')
-                    ->formatStateUsing(fn ($state) => $state === 'tunai' ? '💰 Tunai' : '🧾 Invoice'),
+                    ->formatStateUsing(fn ($state) => $state === 'tunai' ? '💰 Tunai' : '🧾 Invoice')
+                    ->description(fn (\App\Models\MaterialSale $record): ?string => $record->isVoided()
+                        ? 'DIBATALKAN — ' . $record->void_reason : null),
 
                 TextColumn::make('invoice.invoice_number')
                     ->label('No. Invoice')
@@ -84,6 +86,27 @@ class MaterialSalesTable
             ])
             ->recordActions([
                 Action::make('lihat_bukti')->liatBukti(),
+
+                // Penjualan tunai: batal = void jurnal + stok kembali + HPP & biaya kirim dibalik.
+                Action::make('batalkan')
+                    ->label('Batalkan')
+                    ->icon(\Filament\Support\Icons\Heroicon::OutlinedXCircle)
+                    ->color('danger')
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(\App\Enums\Permission::JournalVoid) ?? false)
+                    ->visible(fn (\App\Models\MaterialSale $record): bool => $record->isTunai() && ! $record->isVoided())
+                    ->requiresConfirmation()
+                    ->modalHeading(fn (\App\Models\MaterialSale $record) => "Batalkan penjualan {$record->sale_number}?")
+                    ->modalDescription('Jurnal penjualan, HPP, dan biaya kirim dibalik; stok material dikembalikan. Penjualan tetap tercatat dengan tanda DIBATALKAN.')
+                    ->schema([\Filament\Forms\Components\Textarea::make('reason')->label('Alasan')->required()->rows(2)])
+                    ->action(function (\App\Models\MaterialSale $record, array $data) {
+                        try {
+                            app(\App\Services\Accounting\MaterialSaleService::class)->voidTunai($record, auth()->user(), $data['reason']);
+                            \Filament\Notifications\Notification::make()->success()->title('Penjualan dibatalkan')->send();
+                        } catch (\Illuminate\Validation\ValidationException $e) {
+                            \Filament\Notifications\Notification::make()->danger()->title('Gagal membatalkan')
+                                ->body(collect($e->errors())->flatten()->implode(' '))->persistent()->send();
+                        }
+                    }),
             ]);
     }
 }

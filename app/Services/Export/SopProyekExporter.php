@@ -172,7 +172,34 @@ class SopProyekExporter extends SopWorkbookExporter
             $row++;
         }
 
+        // ── Pemakaian unit sendiri di proyek (dalam periode) — template SOP
+        //    tidak punya sheet-nya, jadi ditambahkan sebagai sheet baru.
+        $unitLogs = DB::table('project_unit_logs as l')
+            ->join('assets as s', 's.id', '=', 'l.asset_id')
+            ->leftJoin('employees as e', 'e.id', '=', 'l.operator_id')
+            ->leftJoin('journal_entries as j', 'j.id', '=', 'l.journal_entry_id')
+            ->where('l.company_id', $cid)
+            ->where('l.log_date', '>=', $dariStr)->where('l.log_date', '<', $untilStr)
+            ->orderBy('l.log_date')->orderBy('l.id')
+            ->select('l.*', 's.asset_code', 's.name as asset_name', 'e.name as operator_name', 'j.entry_number')
+            ->get();
+
+        $unitRows = $unitLogs->map(fn ($l) => [
+            \Illuminate\Support\Carbon::parse($l->log_date), $allNumbers[$l->project_id] ?? null, $l->asset_code, $l->asset_name,
+            $l->operator_name, $l->jam_kerja !== null ? (float) $l->jam_kerja : null, $l->rit_count !== null ? (int) $l->rit_count : null,
+            (float) $l->solar_liter, $this->money($l->biaya_bbm), $this->money($l->gaji), $this->money($l->uang_makan),
+            $this->money($l->premi), $this->money($l->biaya_lain), $this->money($l->total_biaya), $l->entry_number,
+            trim(implode(' • ', array_filter([$l->biaya_lain_ket, $l->notes]))) ?: null,
+        ])->all();
+
         return [
+            'extra' => [
+                'Pemakaian Unit' => [
+                    'headers' => ['Tanggal', 'No. Proyek', 'Kode Unit', 'Unit', 'Operator/Supir', 'Jam', 'Rit', 'Solar (L)',
+                        'BBM', 'Gaji', 'Uang Makan', 'Premi', 'Lain-lain', 'Total Biaya', 'No. Jurnal', 'Keterangan'],
+                    'rows'    => $unitRows,
+                ],
+            ],
             'cells' => [
                 'Proyek'       => $proyek,
                 'Progress'     => $prog,
@@ -182,7 +209,7 @@ class SopProyekExporter extends SopWorkbookExporter
                     'DP diterima, progress & termin ditagih per proyek dihitung s.d. tanggal SAMPAI dari data MY-TRUCK.'),
             ],
             'clear'    => [],
-            'counts'   => ['proyek' => $projects->count(), 'progress' => $progressInPeriod->count(), 'dp & termin' => $entries->count()],
+            'counts'   => ['proyek' => $projects->count(), 'progress' => $progressInPeriod->count(), 'dp & termin' => $entries->count(), 'pemakaian unit' => $unitLogs->count()],
             'warnings' => [],
         ];
     }

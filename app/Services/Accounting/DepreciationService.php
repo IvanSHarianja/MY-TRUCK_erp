@@ -569,6 +569,12 @@ class DepreciationService
             return [false, "Belum eligible: pembelian {$purchaseDate->format('Y-m')}, depresiasi mulai {$firstDepreciationMonth->format('Y-m')}"];
         }
 
+        // Bulan yang sudah tercakup akumulasi penyusutan awal (aset lama / impor)
+        // tidak disusutkan lagi — dulu susulan bulan lalu menyusutkan dua kali.
+        if ($asset->akumulasi_awal_per && $targetMonth->lte(Carbon::parse($asset->akumulasi_awal_per)->startOfMonth())) {
+            return [false, 'Sudah tercakup akumulasi penyusutan awal (s/d ' . Carbon::parse($asset->akumulasi_awal_per)->format('Y-m') . ')'];
+        }
+
         // Check umur habis:
         // - StraightLine: pakai bulan (monthsElapsed vs useful_life_months)
         // - PerDay: cap dilakukan via remaining depreciable base di postAssetDepreciation

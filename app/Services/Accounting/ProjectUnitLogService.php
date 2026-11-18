@@ -55,6 +55,10 @@ class ProjectUnitLogService
         $project = Project::withoutGlobalScopes()->findOrFail($log->project_id);
 
         return DB::transaction(function () use ($log, $project, $data) {
+            // Tanggal LAMA juga harus di periode terbuka: jurnal lamanya di-void,
+            // dan void menghapus angka dari periode asalnya.
+            $company = Company::withoutGlobalScopes()->findOrFail($log->company_id);
+            $this->journals->assertPeriodOpen($company, $log->log_date->year, $log->log_date->month);
             $attrs = $this->normalize($project, $data);
             $this->voidJournals($log, 'Ubah log pemakaian unit');
             $log->update($attrs);
@@ -225,11 +229,23 @@ class ProjectUnitLogService
             ->where('status', 'posted')
             ->get();
 
-        foreach ($journals as $journal) {
-            $this->journals->void($journal, $reason);
+        self::$voiding = true;
+        try {
+            foreach ($journals as $journal) {
+                $this->journals->void($journal, $reason);
+            }
+        } finally {
+            self::$voiding = false;
         }
         ProjectUnitLog::withoutEvents(fn () => $log->update(['journal_entry_id' => null]));
     }
+
+    /**
+     * True selama service ini me-void jurnalnya sendiri. Void jurnal biaya /
+     * penyusutan pemakaian unit dari Jurnal Umum ditolak JournalEntryObserver:
+     * log tetap mencatat biayanya → Laporan Margin Proyek tidak cocok dengan buku.
+     */
+    public static bool $voiding = false;
 
     /**
      * Biaya pemakaian unit per proyek: kas (log) + penyusutan pemakaian.

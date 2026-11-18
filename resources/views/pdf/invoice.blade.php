@@ -207,11 +207,43 @@
         color: #555;
         margin-bottom: 50px;
     }
+    .sign-label-img { margin-bottom: 4px; }
+    .sign-images {
+        position: relative;
+        height: 70px;
+        margin-bottom: 2px;
+    }
+    .sign-img {
+        height: 60px;
+        max-width: 160px;
+        position: relative;
+    }
+    .sign-stamp {
+        height: 70px;
+        position: absolute;
+        left: 30px;
+        top: 0;
+        opacity: 0.85;
+    }
     .sign-line {
         border-top: 1px solid #222;
         padding-top: 4px;
         font-size: 10px;
         font-weight: 600;
+    }
+    .watermark {
+        position: fixed;
+        top: 38%;
+        left: 0;
+        width: 100%;
+        text-align: center;
+        font-size: 110px;
+        font-weight: 800;
+        letter-spacing: 12px;
+        color: #DC2626;
+        opacity: 0.12;
+        transform: rotate(-30deg);
+        z-index: -1;
     }
     .footer {
         margin-top: 24px;
@@ -224,6 +256,9 @@
 </style>
 </head>
 <body>
+@if (in_array($invoice->status, ['draft', 'void'], true))
+    <div class="watermark">{{ strtoupper($invoice->status) }}</div>
+@endif
 
 <div class="header">
     <div class="header-left">
@@ -338,15 +373,34 @@
     <div class="terms-title">Ketentuan Pembayaran:</div>
     1. Pembayaran dapat ditransfer ke rekening yang tercantum atau dibayarkan tunai ke kantor kami.<br>
     2. Mohon mencantumkan nomor invoice <strong>{{ $invoice->invoice_number }}</strong> saat melakukan transfer.<br>
-    3. Invoice ini sah tanpa tanda tangan & cap. Konfirmasi pembayaran via email atau telepon.
+    @php
+        // Draft / void bukan dokumen sah: tanpa tanda tangan & cap Owner (+ watermark).
+        $isOfficial = in_array($invoice->status, ['terbit', 'sebagian', 'lunas'], true);
+        $signature = $isOfficial ? $company->imageDataUri('signature_path') : null;
+        $stamp     = $isOfficial ? $company->imageDataUri('stamp_path') : null;
+    @endphp
+    {{-- Dulu: "sah tanpa tanda tangan & cap" padahal ada kolom tanda tangan di bawah. --}}
+    3. @if (! $isOfficial)
+        <strong>Dokumen ini {{ $invoice->status === 'void' ? 'telah DIBATALKAN (void)' : 'masih DRAFT' }} dan bukan tagihan yang sah.</strong>
+    @else
+        {{ $signature ? 'Invoice ini ditandatangani secara elektronik oleh ' . $company->name . '.' : 'Invoice ini dicetak oleh sistem dan sah tanpa tanda tangan basah.' }}
+    @endif
+    Konfirmasi pembayaran via email atau telepon.
 </div>
 
 <div class="signature">
     <div class="sign-block"></div>
     <div class="sign-block"></div>
     <div class="sign-block">
-        <div class="sign-label">{{ $company->name }}<br>{{ \Carbon\Carbon::now()->translatedFormat('d F Y') }}</div>
-        <div class="sign-line">{{ $company->owner_name ?? 'Bagian Keuangan' }}</div>
+        {{-- Tanggal = tanggal INVOICE, bukan tanggal cetak (cetak ulang tidak menggeser tanggal). --}}
+        <div class="sign-label @if ($signature || $stamp) sign-label-img @endif">{{ $company->name }}<br>{{ $invoice->invoice_date->translatedFormat('d F Y') }}</div>
+        @if ($signature || $stamp)
+            <div class="sign-images">
+                @if ($stamp)<img src="{{ $stamp }}" class="sign-stamp" alt="Cap">@endif
+                @if ($signature)<img src="{{ $signature }}" class="sign-img" alt="Tanda tangan">@endif
+            </div>
+        @endif
+        <div class="sign-line">{{ $company->owner_name ?: 'Bagian Keuangan' }}</div>
     </div>
 </div>
 

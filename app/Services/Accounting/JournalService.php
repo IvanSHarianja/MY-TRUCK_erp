@@ -147,11 +147,9 @@ class JournalService
             $entry->lines->pluck('account_id')->unique()->all()
         );
 
-        $this->assertPeriodOpen(
-            Company::findOrFail($entry->company_id),
-            $entry->period_year,
-            $entry->period_month,
-        );
+        $company = Company::findOrFail($entry->company_id);
+        $this->assertPeriodOpen($company, $entry->period_year, $entry->period_month);
+        $this->assertCashTransferAllowed($entry, $company);
 
         return DB::transaction(function () use ($entry) {
             $entry->update([
@@ -163,6 +161,28 @@ class JournalService
 
             return $entry->refresh();
         });
+    }
+
+    /**
+     * Pindah dana antar rekening wajib persetujuan Owner (masukan 2026-11-18).
+     * Jurnal manual yang SEMUA barisnya akun kas/bank = transfer → hanya boleh
+     * diposting pemegang izin "Setujui Transfer"; selain itu diarahkan ke menu
+     * Transfer Antar Rekening. Jurnal Saldo Awal tidak termasuk.
+     */
+    private function assertCashTransferAllowed(JournalEntry $entry, Company $company): void
+    {
+        if (! ($user = Auth::user())) {
+            return;
+        }
+
+        if ($entry->needsOwnerApproval() && ! $user->canIn($company, \App\Enums\Permission::CashTransferApprove)) {
+            throw ValidationException::withMessages([
+                'lines' => ($entry->document_type === 'saldo_awal'
+                        ? 'Jurnal Saldo Awal'
+                        : 'Jurnal ini memindahkan dana antar rekening kas/bank —')
+                    . ' wajib disetujui Owner. Biarkan sebagai draft; Owner akan memeriksa lalu mempostingnya.',
+            ]);
+        }
     }
 
     /**

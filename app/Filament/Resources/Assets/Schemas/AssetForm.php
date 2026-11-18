@@ -89,8 +89,9 @@ class AssetForm
                     ->dehydrated(true)
                     ->default(0)
                     ->rupiah()
-                    ->helperText('Untuk aset yang dibeli sebelum memakai MY-TRUCK: total penyusutan sampai akhir bulan lalu. '
-                        . 'Isi 0 untuk aset baru. Saldo di buku besar dicatat lewat jurnal Saldo Awal.')
+                    ->helperText(fn (?Asset $record): string => 'Untuk aset yang dibeli sebelum memakai MY-TRUCK: total penyusutan sampai akhir bulan lalu. '
+                        . 'Isi 0 untuk aset baru. Saldo di buku besar dicatat lewat jurnal Saldo Awal.'
+                        . ($record?->akumulasi_awal_per ? ' Berlaku s/d ' . $record->akumulasi_awal_per->translatedFormat('F Y') . ' — bulan-bulan itu tidak disusutkan lagi.' : ''))
                     ->suffixAction(
                         \Filament\Actions\Action::make('hitungAkumulasi')
                             ->icon(\Filament\Support\Icons\Heroicon::OutlinedCalculator)

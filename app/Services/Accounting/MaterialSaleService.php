@@ -28,6 +28,123 @@ class MaterialSaleService
     ) {}
 
     /**
+     * True selama reverseSale() berjalan — JournalEntryObserver memakainya untuk
+     * membedakan void HPP/KIRIM oleh sistem dari void manual di Jurnal Umum.
+     */
+    public static bool $reversing = false;
+
+    /**
+     * Batalkan penjualan TUNAI: void jurnal penjualan (Dr Kas / Cr Pendapatan),
+     * kembalikan stok, balik HPP & biaya kirim. Penjualan tetap tersimpan
+     * dengan penanda batal (jejak audit). Penjualan invoice dibatalkan dengan
+     * me-void invoicenya.
+     */
+    public function voidTunai(MaterialSale $sale, \App\Models\User $user, string $reason): MaterialSale
+    {
+        if (! $sale->isTunai()) {
+            throw ValidationException::withMessages(['sale' => 'Penjualan dengan invoice dibatalkan lewat Void invoice-nya di Tagihan & Piutang.']);
+        }
+        if (mb_strlen(trim($reason)) < 3) {
+            throw ValidationException::withMessages(['reason' => 'Isi alasan pembatalan.']);
+        }
+
+        return DB::transaction(function () use ($sale, $user, $reason) {
+            $locked = MaterialSale::withoutGlobalScopes()->lockForUpdate()->findOrFail($sale->id);
+            if ($locked->isVoided()) {
+                throw ValidationException::withMessages(['sale' => "Penjualan {$locked->sale_number} sudah dibatalkan."]);
+            }
+            // Tandai dulu → JournalEntryObserver tidak memproses ulang saat jurnalnya di-void.
+            $locked->update(['voided_at' => now(), 'voided_by' => $user->id, 'void_reason' => mb_substr(trim($reason), 0, 255)]);
+
+            $journal = $locked->journal_entry_id ? JournalEntry::withoutGlobalScopes()->find($locked->journal_entry_id) : null;
+            if ($journal && $journal->isPosted()) {
+                $this->journalService->void($journal, "Batal penjualan {$locked->sale_number}: {$reason}");
+            }
+            $this->reverseSale($locked, "Batal penjualan {$locked->sale_number}");
+
+            return $locked->refresh();
+        });
+    }
+
+    /**
+     * Kembalikan stok (bila penjualan tercatat keluar stok), void jurnal HPP &
+     * biaya kirim. Dipakai void invoice penjualan (InvoiceObserver), batal
+     * penjualan tunai, dan void manual jurnal penjualan tunai.
+     */
+    public function reverseSale(MaterialSale $sale, string $label): void
+    {
+        self::$reversing = true;
+        try {
+            $outMovement = MaterialStockMovement::withoutGlobalScopes()
+                ->where('source_type', MaterialSale::class)
+                ->where('source_id', $sale->id)
+                ->where('movement_type', 'out')
+                ->first();
+            $alreadyRestored = MaterialStockMovement::withoutGlobalScopes()
+                ->where('source_type', MaterialSale::class)
+                ->where('source_id', $sale->id)
+                ->where('movement_type', 'adjustment')
+                ->exists();
+
+            // Penjualan legacy (tanpa stock movement) dilewati. Invoice yang
+            // di-void dua kali (sale ditagih ulang lalu void lagi) tidak boleh
+            // mengembalikan stok dua kali.
+            if ($outMovement && ! $alreadyRestored) {
+                $material = Material::withoutGlobalScopes()->lockForUpdate()->find($sale->material_id);
+                if ($material) {
+                    $stockBefore = (float) $material->current_stock;
+                    $qtyRestore  = abs((float) $outMovement->qty_change);
+                    $stockAfter  = $stockBefore + $qtyRestore;
+                    $macBefore   = (float) $material->current_mac;
+                    // Barang kembali senilai HPP-nya (biaya saat keluar), bukan MAC hari ini:
+                    // jurnal HPP dibalik sebesar qty × biaya lama, jadi MAC dihitung ulang
+                    // sebagai rata-rata tertimbang supaya stok × MAC = saldo Persediaan.
+                    $macAfter = $stockAfter > 0
+                        ? round(($stockBefore * $macBefore + $qtyRestore * (float) $outMovement->unit_cost) / $stockAfter, 4)
+                        : $macBefore;
+
+                    DB::table('materials')->where('id', $material->id)
+                        ->update(['current_stock' => $stockAfter, 'current_mac' => $macAfter, 'updated_at' => now()]);
+
+                    MaterialStockMovement::create([
+                        'company_id'    => $material->company_id,
+                        'material_id'   => $material->id,
+                        'movement_type' => 'adjustment',
+                        'source_type'   => MaterialSale::class,
+                        'source_id'     => $sale->id,
+                        'qty_change'    => $qtyRestore,
+                        'unit_cost'     => (float) $outMovement->unit_cost,
+                        'stock_before'  => $stockBefore,
+                        'stock_after'   => $stockAfter,
+                        'mac_before'    => $macBefore,
+                        'mac_after'     => $macAfter,
+                        'movement_date' => now()->toDateString(),
+                        'notes'         => "Restore stok — {$label}",
+                        'created_by'    => Auth::id(),
+                    ]);
+                }
+            }
+
+            // HPP (source = sale, atau data lama No. Bukti HPP-{no}) & biaya kirim (source = sale).
+            $journals = JournalEntry::withoutGlobalScopes()
+                ->where('company_id', $sale->company_id)
+                ->where('status', 'posted')
+                ->where(function ($q) use ($sale) {
+                    $q->where(fn ($s) => $s->where('source_type', $sale->getMorphClass())->where('source_id', $sale->id))
+                      ->orWhere(fn ($s) => $s->whereNull('source_type')
+                          ->where('document_type', 'jual_beli')
+                          ->where('document_number', 'HPP-' . $sale->sale_number));
+                })
+                ->get();
+            foreach ($journals as $journal) {
+                $this->journalService->void($journal, $label);
+            }
+        } finally {
+            self::$reversing = false;
+        }
+    }
+
+    /**
      * Auto-generate nomor penjualan per company per bulan.
      * Format: PJ{YY}{MM}-{NNNN}, contoh: PJ2606-0001
      */
@@ -125,6 +242,16 @@ class MaterialSaleService
             $data, $material, $client, $volume, $harga, $total, $saleDate,
             $metode, $company, $matlUnit, $satuanJual, $jumlahRit, $delivery
         ) {
+            // Cek ulang stok SETELAH lock: dua penjualan bersamaan dulu sama-sama
+            // lolos cek di atas, stok terpotong ke 0 diam-diam, HPP tetap penuh.
+            $lockedStock = (float) Material::withoutGlobalScopes()->lockForUpdate()->findOrFail($material->id)->current_stock;
+            if ($volume > $lockedStock + 0.0001 && MaterialStockMovement::withoutGlobalScopes()->where('material_id', $material->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'volume' => sprintf('Stok %s tidak cukup (baru saja terpakai penjualan lain). Tersedia: %s %s.',
+                        $material->name, rtrim(rtrim(number_format($lockedStock, 2, ',', '.'), '0'), ','), $material->satuan),
+                ]);
+            }
+
             $sale = MaterialSale::create($delivery + [
                 'company_id'   => $company->id,
                 'sale_number'  => $this->generateSaleNumber($company, $saleDate),

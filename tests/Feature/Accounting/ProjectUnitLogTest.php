@@ -151,6 +151,50 @@ class ProjectUnitLogTest extends TestCase
         $this->assertSame(0, ProjectUnitLog::count());
     }
 
+    public function test_lak_memetakan_biaya_proyek_ke_baris_borongan(): void
+    {
+        $kas = $this->postableAccount($this->company, '111110');
+        app(\App\Services\Accounting\JournalService::class)->post($this->makeJournalEntry($this->company, [
+            ['account_id' => $kas->id, 'debit' => 10_000_000, 'kredit' => 0],
+            ['account_id' => $this->postableAccount($this->company, '331100')->id, 'debit' => 0, 'kredit' => 10_000_000],
+        ], ['document_type' => 'saldo_awal'], now()->startOfMonth()));
+
+        $this->svc()->create($this->project, [
+            'log_date' => now()->toDateString(), 'asset_id' => $this->excavator->id, 'jam_kerja' => 8, 'cash_account_id' => $kas->id,
+            'solar_liter' => 100, 'gaji' => 200_000, 'uang_makan' => 50_000, 'premi' => 30_000,
+        ]);
+
+        $lak = app(\App\Services\Accounting\CashFlowLakService::class)->getReport($this->company->id, (int) now()->year, (int) now()->month);
+        $items = collect($lak['pengeluaran']['pengeluaran_borongan']['items'])->pluck('amount', 'label');
+
+        $this->assertEquals(700_000, $items['BIAYA BBM BONG']);
+        $this->assertEquals(200_000, $items['BIAYA OPERATOR & SUPIR BONG']);
+        $this->assertEquals(80_000, $items['BIAYA PREMI & UANG MAKAN BONG']);
+        $gajiKantor = collect($lak['pengeluaran']['pengeluaran_kantor']['items'])->firstWhere('label', 'GAJI KANTOR')['amount'];
+        $this->assertEquals(0, $gajiKantor, 'gaji operator proyek bukan gaji kantor');
+        $this->assertEquals(0, $lak['tidakTerpetakan']['keluar']);
+    }
+
+    public function test_backup_sop_proyek_memuat_sheet_pemakaian_unit(): void
+    {
+        $this->svc()->create($this->project, [
+            'log_date' => now()->toDateString(), 'asset_id' => $this->truk->id, 'rit_count' => 6, 'premi' => 300_000, 'biaya_lain_ket' => 'portal',
+        ]);
+
+        $exporter = app(\App\Services\Export\SopProyekExporter::class);
+        $payload = $exporter->buildPayload($this->company, now()->startOfMonth(), now());
+        $this->assertSame(1, $payload['counts']['pemakaian unit']);
+
+        $ss = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $exporter->write($ss, ['cells' => [], 'clear' => [], 'extra' => $payload['extra']]);
+        $sheet = $ss->getSheetByName('Pemakaian Unit');
+
+        $this->assertNotNull($sheet);
+        $this->assertSame('PR26-0001', $sheet->getCell('B2')->getValue());
+        $this->assertSame('DT-01', $sheet->getCell('C2')->getValue());
+        $this->assertEquals(300_000, $sheet->getCell('N2')->getValue());
+    }
+
     public function test_tab_pemakaian_unit_dan_izin(): void
     {
         Livewire::test(UnitLogsRelationManager::class, ['ownerRecord' => $this->project, 'pageClass' => EditProject::class])

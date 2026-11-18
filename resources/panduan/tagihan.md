@@ -20,6 +20,15 @@ Aksi **Terima Pembayaran** → isi **Tanggal Bayar**, rekening penerima (**Diter
 - Filter **Keterlambatan** memilah tagihan per kelompok: belum jatuh tempo, telat 1–30, 31–60, 61–90, lebih dari 90 hari, atau lunas tapi telat.
 - **Cetak PDF** untuk mengirim invoice secara manual.
 
+### Tanda tangan & cap di invoice
+
+Invoice PDF ditandatangani atas nama **Nama Pemilik / Direktur** di **Profil Perusahaan** (kosong → "Bagian Keuangan"), dengan tanggal sesuai tanggal invoice.
+
+- Owner dapat mengunggah **gambar tanda tangan** dan **cap perusahaan** (maks. 5 MB) di **Profil Perusahaan → Tanda Tangan & Cap Invoice**. Peran lain hanya melihat.
+- Cukup **foto tanda tangan di kertas** dengan HP. Saat disimpan, latar kertas, bayangan, dan garis buku dihapus otomatis, warna tinta diratakan, dan gambar dipotong rapat ke area tanda tangan. Hasil terbaik: tinta gelap, cahaya rata, tanpa bayangan tangan.
+- Bila tanda tangan diunggah, invoice mencantumkan bahwa dokumen *ditandatangani secara elektronik*. Tanpa gambar, invoice menyatakan *sah tanpa tanda tangan basah*.
+- Invoice **Draft** atau **Void** tetap bisa dicetak untuk pratinjau/arsip, tetapi **tanpa tanda tangan & cap**, dengan tulisan besar DRAFT / VOID dan keterangan bahwa dokumen itu bukan tagihan yang sah.
+
 ### Laporan Piutang & export Excel
 
 Tombol **Laporan Piutang** di atas tabel membuka laporan berisi:

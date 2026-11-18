@@ -2,9 +2,13 @@
 
 namespace App\Filament\Resources\JournalEntries\Tables;
 
+use App\Models\Account;
 use App\Models\JournalEntry;
 use App\Services\Accounting\JournalService;
 use Filament\Actions\Action;
+use Filament\Facades\Filament;
+use Filament\Tables\Filters\Filter;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -17,9 +21,40 @@ use Filament\Support\Icons\Heroicon;
 
 class JournalEntriesTable
 {
+    /**
+     * Draft yang menunggu diposting Owner: Saldo Awal, atau ada kas/bank yang
+     * berkurang DAN kas/bank yang bertambah (= JournalEntry::needsOwnerApproval,
+     * dihitung dari withCount supaya tidak query per baris).
+     */
+    public static function isPendingTransfer(JournalEntry $r): bool
+    {
+        return $r->isDraft() && ($r->document_type === 'saldo_awal'
+            || ((int) ($r->cash_in_count ?? 0) > 0 && (int) ($r->cash_out_count ?? 0) > 0));
+    }
+
+    public static function pendingLabel(JournalEntry $r): string
+    {
+        return $r->document_type === 'saldo_awal'
+            ? 'Saldo awal — menunggu persetujuan Owner'
+            : 'Pindah dana — menunggu persetujuan Owner';
+    }
+
+    public static function canApproveTransfer(): bool
+    {
+        return auth()->user()?->canCurrent(\App\Enums\Permission::CashTransferApprove) ?? false;
+    }
+
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(function (Builder $query) {
+                $cash = array_map('intval', Account::cashAccountIds(Filament::getTenant()?->getKey() ?? 0)) ?: [0];
+
+                return $query->withCount([
+                    'lines as cash_in_count'  => fn ($l) => $l->whereIn('account_id', $cash)->where('debit', '>', 0),
+                    'lines as cash_out_count' => fn ($l) => $l->whereIn('account_id', $cash)->where('kredit', '>', 0),
+                ]);
+            })
             ->defaultSort('entry_date', 'desc')
             ->columns([
                 TextColumn::make('entry_number')
@@ -61,12 +96,14 @@ class JournalEntriesTable
                 TextColumn::make('status')
                     ->label('Status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'draft'  => 'gray',
-                        'posted' => 'success',
-                        'void'   => 'danger',
-                        default  => 'gray',
-                    }),
+                    ->color(fn (string $state, JournalEntry $record): string => match (true) {
+                        static::isPendingTransfer($record) => 'warning',
+                        $state === 'posted' => 'success',
+                        $state === 'void'   => 'danger',
+                        default             => 'gray',
+                    })
+                    ->description(fn (JournalEntry $record): ?string => static::isPendingTransfer($record)
+                        ? static::pendingLabel($record) : null),
 
                 TextColumn::make('createdBy.name')
                     ->label('Dibuat oleh')
@@ -100,6 +137,10 @@ class JournalEntriesTable
                         'pembalik'    => 'Pembalik',
                         'saldo_awal'  => 'Saldo Awal',
                     ]),
+                Filter::make('menunggu_owner')
+                    ->label('Menunggu persetujuan Owner (pindah dana / saldo awal)')
+                    ->toggle()
+                    ->query(fn (Builder $query) => $query->pendingOwnerApproval(Filament::getTenant()?->getKey() ?? 0)),
                 SelectFilter::make('business_unit_id')
                     ->label('Lini Bisnis')
                     ->relationship('businessUnit', 'name'),
@@ -113,17 +154,34 @@ class JournalEntriesTable
             ])
             ->recordActions([
                 Action::make('post')
-                    ->label('Post')
                     ->icon(Heroicon::CheckCircle)
                     ->color('success')
                     ->authorize(fn (): bool => auth()->user()?->canCurrent(\App\Enums\Permission::JournalPost) ?? false)
-                    ->visible(fn (JournalEntry $record): bool => $record->isDraft())
+                    // Draft pindah dana: tombol Post hanya untuk pemberi persetujuan (Owner).
+                    ->visible(fn (JournalEntry $record): bool => $record->isDraft()
+                        && (! static::isPendingTransfer($record) || static::canApproveTransfer()))
+                    ->label(fn (JournalEntry $record): string => static::isPendingTransfer($record) ? 'Setujui & Post' : 'Post')
                     ->requiresConfirmation()
-                    ->modalHeading('Post Jurnal')
-                    ->modalDescription('Setelah di-post, jurnal tidak bisa diedit lagi. Hanya bisa di-void (dibalik).')
-                    ->action(function (JournalEntry $record) {
+                    ->modalHeading(fn (JournalEntry $record): string => static::isPendingTransfer($record)
+                        ? ($record->document_type === 'saldo_awal' ? 'Setujui saldo awal?' : 'Setujui pindah dana?') : 'Post Jurnal')
+                    ->modalDescription(fn (JournalEntry $record): string => static::isPendingTransfer($record)
+                        ? 'Rp ' . number_format((float) $record->total_amount, 0, ',', '.') . ' — ' . $record->description
+                            . '. Setelah di-post, saldo rekening berubah dan jurnal hanya bisa di-void.'
+                        : 'Setelah di-post, jurnal tidak bisa diedit lagi. Hanya bisa di-void (dibalik).')
+                    // Sidik isi saat jendela dibuka — tolak bila draft diubah sebelum dikonfirmasi.
+                    ->fillForm(fn (JournalEntry $record): array => ['fingerprint' => $record->contentFingerprint()])
+                    ->schema([\Filament\Forms\Components\Hidden::make('fingerprint')])
+                    ->action(function (JournalEntry $record, array $data) {
+                        $fresh = $record->fresh();
+                        if (! $fresh || ! $fresh->isDraft() || ($data['fingerprint'] ?? null) !== $fresh->contentFingerprint()) {
+                            Notification::make()->warning()->title('Jurnal berubah')
+                                ->body('Draft ini diubah atau sudah diproses orang lain sejak jendela konfirmasi dibuka. Periksa lagi sebelum memposting.')
+                                ->persistent()->send();
+
+                            return;
+                        }
                         try {
-                            app(JournalService::class)->post($record);
+                            app(JournalService::class)->post($fresh);
                             Notification::make()
                                 ->title('Jurnal berhasil di-post')
                                 ->success()

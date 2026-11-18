@@ -57,6 +57,27 @@ class JournalEntryObserver
         DB::transaction(function () use ($entry) {
             $docNum = (string) $entry->document_number;
 
+            if ($this->cascadeMaterialSaleVoid($entry)) {
+                return;
+            }
+
+            // Jurnal biaya & penyusutan pemakaian unit proyek: ubah/hapus lognya.
+            if ($entry->sourceIs(\App\Models\ProjectUnitLog::class) && ! \App\Services\Accounting\ProjectUnitLogService::$voiding) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'status' => 'Jurnal ini milik Pemakaian Unit Harian proyek. Ubah atau hapus catatannya di tab '
+                        . 'Pemakaian Unit Harian supaya Laporan Margin Proyek ikut berubah.',
+                ]);
+            }
+
+            // Jurnal pencairan / pembayaran cicilan hanya dibatalkan dari menu Hutang.
+            if (($entry->sourceIs(\App\Models\Debt::class) || $entry->sourceIs(\App\Models\DebtInstallment::class))
+                && ! \App\Services\Accounting\DebtService::$voiding) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'status' => 'Jurnal ini milik menu Hutang & Cicilan. Batalkan lewat menu tersebut '
+                        . '(Batal Bayar pada cicilan, atau Hapus hutang) supaya status cicilan ikut berubah.',
+                ]);
+            }
+
             if (str_starts_with($docNum, 'DPPOT-')) {
                 $this->guardDpDeductionVoid($entry);
             } elseif (str_starts_with($docNum, 'DP-')) {
@@ -84,6 +105,48 @@ class JournalEntryObserver
     }
 
     /**
+     * Penjualan material:
+     *  - Jurnal penjualan TUNAI di-void dari Jurnal Umum → penjualan ikut batal
+     *    (stok kembali, HPP & biaya kirim dibalik), sama seperti tombol Batalkan.
+     *  - Jurnal HPP / biaya kirim di-void sendirian → ditolak; stok & margin
+     *    penjualan tidak ikut berubah. Void oleh sistem (reverseSale) lolos.
+     *
+     * @return bool true bila jurnal ini milik penjualan material (sudah ditangani)
+     */
+    private function cascadeMaterialSaleVoid(JournalEntry $entry): bool
+    {
+        $service = app(\App\Services\Accounting\MaterialSaleService::class);
+
+        $sale = \App\Models\MaterialSale::withoutGlobalScopes()
+            ->where('journal_entry_id', $entry->id)->where('metode', 'tunai')->first();
+        if ($sale) {
+            if (! $sale->isVoided()) {
+                $sale->update(['voided_at' => now(), 'voided_by' => \Illuminate\Support\Facades\Auth::id(),
+                    'void_reason' => "Jurnal {$entry->entry_number} di-void"]);
+                $service->reverseSale($sale, "Void jurnal penjualan {$sale->sale_number}");
+            }
+
+            return true;
+        }
+
+        if ($entry->sourceIs(\App\Models\MaterialSale::class) && ! \App\Services\Accounting\MaterialSaleService::$reversing) {
+            $owner = \App\Models\MaterialSale::withoutGlobalScopes()->find($entry->source_id);
+            if ($owner && ! $owner->isVoided()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'status' => "Jurnal ini bagian dari penjualan {$owner->sale_number}. "
+                        . ($owner->isTunai()
+                            ? 'Batalkan penjualannya di menu Penjualan Material (tombol Batalkan).'
+                            : 'Batalkan lewat Void invoice-nya di Tagihan & Piutang.'),
+                ]);
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Jurnal pemotongan DP hanya boleh batal bersama invoice terminnya
      * (InvoiceObserver::rollbackProjectTermin). Void manual → invoice tetap
      * bersih tapi pendapatan dari DP hilang, Uang Muka kembali penuh.
@@ -102,6 +165,14 @@ class JournalEntryObserver
             throw \Illuminate\Validation\ValidationException::withMessages([
                 'status' => "Jurnal pemotongan DP termin {$termin->termin_number} hanya bisa dibatalkan dengan me-void invoice terminnya.",
             ]);
+        }
+
+        // Termin lunas penuh dari DP (tanpa invoice) di-void dari Jurnal Umum →
+        // termin ikut batal, supaya tertagih % & sisa DP proyek tetap cocok dengan buku.
+        // (Termin yang dibatalkan lewat void invoice sudah dihapus lebih dulu → $termin null.)
+        if ($termin && ! $termin->invoice_id) {
+            app(\App\Services\Accounting\ProjectService::class)
+                ->rollbackTermin($termin, "Void jurnal {$entry->entry_number}");
         }
     }
 
@@ -293,6 +364,32 @@ class JournalEntryObserver
      * Kalau tidak, saldo Persediaan di Neraca (yang sudah net-off pembalik)
      * jadi tidak match dengan `materials.current_stock`.
      */
+    /**
+     * Pembelian kredit dibatalkan → hutang vendornya (menu Hutang & Cicilan)
+     * ikut dihapus. Tanpa ini hutang tetap "aktif" dan bisa dibayar untuk
+     * barang yang sudah batal. Bila sudah ada cicilan dibayar, void ditolak:
+     * batalkan pembayarannya dulu supaya kas & utang tetap konsisten.
+     */
+    private function closePurchaseDebt(\App\Models\MaterialPurchase $purchase): void
+    {
+        $debts = \App\Models\Debt::withoutGlobalScopes()
+            ->where('source_type', $purchase->getMorphClass())
+            ->where('source_id', $purchase->id)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($debts as $debt) {
+            if ($debt->installments()->where('status', 'lunas')->exists()) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'status' => "Hutang {$debt->debt_number} untuk pembelian {$purchase->purchase_number} sudah ada pembayaran. "
+                        . 'Batalkan pembayarannya di menu Hutang & Cicilan sebelum me-void pembelian ini.',
+                ]);
+            }
+            $debt->installments()->delete();
+            $debt->delete();
+        }
+    }
+
     private function cascadePurchaseVoid(JournalEntry $entry): void
     {
         $purchase = \App\Models\MaterialPurchase::withoutGlobalScopes()
@@ -303,6 +400,8 @@ class JournalEntryObserver
             \Log::info("JournalEntryObserver: Void PB {$entry->entry_number} — MaterialPurchase tidak ditemukan, skip cascade.");
             return;
         }
+
+        $this->closePurchaseDebt($purchase);
 
         $material = \App\Models\Material::withoutGlobalScopes()
             ->where('id', $purchase->material_id)

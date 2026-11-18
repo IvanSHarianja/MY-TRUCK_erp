@@ -24,6 +24,8 @@ class Company extends Model implements HasCurrentTenantLabel
         'phone',
         'email',
         'logo',
+        'signature_path',
+        'stamp_path',
         'is_active',
         'harga_solar_default',
     ];
@@ -37,6 +39,39 @@ class Company extends Model implements HasCurrentTenantLabel
             // Integer cast — cegah bug rupiah 100× lipat pada form ->rupiah().
             'harga_solar_default' => 'integer',
         ];
+    }
+
+    /**
+     * Gambar tanda tangan / cap sebagai data URI untuk PDF (DomPDF tidak bisa
+     * membaca disk privat lewat URL). Null bila tidak ada / file hilang.
+     */
+    /** File tanda tangan / cap lama dihapus setelah diganti atau dikosongkan. */
+    protected static function booted(): void
+    {
+        static::updated(function (Company $company) {
+            foreach (['signature_path', 'stamp_path'] as $field) {
+                $old = $company->getOriginal($field);
+                if ($company->wasChanged($field) && is_string($old) && str_starts_with($old, 'company-signatures/')) {
+                    \Illuminate\Support\Facades\DB::afterCommit(
+                        fn () => \Illuminate\Support\Facades\Storage::disk('local')->delete($old)
+                    );
+                }
+            }
+        });
+    }
+
+    public function imageDataUri(string $field): ?string
+    {
+        $path = $this->{$field};
+        if (! $path || ! \Illuminate\Support\Facades\Storage::disk('local')->exists($path)) {
+            return null;
+        }
+        $mime = \Illuminate\Support\Facades\Storage::disk('local')->mimeType($path) ?: 'image/png';
+        if (! str_starts_with($mime, 'image/')) {
+            return null;
+        }
+
+        return 'data:' . $mime . ';base64,' . base64_encode(\Illuminate\Support\Facades\Storage::disk('local')->get($path));
     }
 
     public function users(): BelongsToMany

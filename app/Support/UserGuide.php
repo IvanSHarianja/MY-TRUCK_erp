@@ -60,6 +60,7 @@ final class UserGuide
         ['key' => 'transaksi-beban', 'group' => 'Operasional', 'title' => 'Transaksi & Beban', 'pages' => [Pages\QuickTransaction::class]],
 
         ['key' => 'tagihan', 'group' => 'Keuangan', 'title' => 'Tagihan & Piutang', 'pages' => [Resources\Invoices\InvoiceResource::class]],
+        ['key' => 'hutang', 'group' => 'Keuangan', 'title' => 'Hutang & Cicilan', 'pages' => [Resources\Debts\DebtResource::class]],
         ['key' => 'jurnal-umum', 'group' => 'Keuangan', 'title' => 'Jurnal Umum', 'pages' => [Resources\JournalEntries\JournalEntryResource::class]],
         ['key' => 'buku-besar', 'group' => 'Keuangan', 'title' => 'Buku Besar', 'pages' => [Reports\GeneralLedger::class]],
         ['key' => 'tutup-buku', 'group' => 'Keuangan', 'title' => 'Tutup Buku Tahunan', 'pages' => [\App\Filament\Pages\YearEndClosing::class]],

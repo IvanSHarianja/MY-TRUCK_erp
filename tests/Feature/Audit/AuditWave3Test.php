@@ -162,10 +162,11 @@ class AuditWave3Test extends TestCase
 
     public function test_aset_setengah_umur_hanya_menyusutkan_sisa_nilai(): void
     {
-        // Dibeli 92 bulan lalu → akumulasi awal 92 × 1jt; sisa 4 bulan × 1jt.
+        // Dibeli 92 bulan lalu; bulan beli tidak disusutkan → akumulasi awal 91 × 1jt;
+        // sisa 5 bulan × 1jt (total 96 = umur ekonomis).
         $a = $this->asset(['purchase_date' => now()->startOfMonth()->subMonths(92)->toDateString()]);
         $a->update(['akumulasi_awal' => $a->estimatedAkumulasiAwal()]);
-        $this->assertEquals(92_000_000, $a->akumulasi_awal);
+        $this->assertEquals(91_000_000, $a->akumulasi_awal);
 
         $svc = app(DepreciationService::class);
         $month = now()->startOfMonth();
@@ -175,6 +176,6 @@ class AuditWave3Test extends TestCase
         }
 
         $posted = \App\Models\JournalEntry::withoutGlobalScopes()->where('document_number', 'like', "DEP-{$a->id}-%")->sum('total_amount');
-        $this->assertEquals(4_000_000, $posted, 'total penyusutan tidak melebihi sisa nilai');
+        $this->assertEquals(5_000_000, $posted, 'total penyusutan tidak melebihi sisa nilai');
     }
 }

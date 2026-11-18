@@ -56,6 +56,8 @@ class JournalEntry extends Model
         '/^DP-PR\d{2}-/i',                      // DP proyek DP-{PR26-0001}
         '/^HPP-PJ\d{4}-/i',                     // HPP penjualan material
         '/^REV-J\d{4}-/i',                      // jurnal pembalik
+        '/^HT\d{4}-\d+/i',                      // hutang & cicilan HT{YYMM}-NNN(/ke)
+        '/^TUTUP-\d{4}/i',                      // jurnal penutup tahunan
     ];
 
     public static function isSystemDocumentNumber(?string $documentNumber): bool
@@ -129,6 +131,60 @@ class JournalEntry extends Model
     {
         return $this->source_id !== null
             && $this->source_type === (new $modelClass)->getMorphClass();
+    }
+
+    /**
+     * Jurnal pindah dana antar rekening: ada rekening kas/bank yang BERKURANG
+     * (kredit) DAN rekening kas/bank lain yang BERTAMBAH (debit), berapa pun
+     * baris lainnya — transfer + biaya admin bank tetap tertangkap.
+     */
+    public function isCashTransfer(): bool
+    {
+        $this->loadMissing('lines');
+        $cash = array_flip(array_map('intval', Account::cashAccountIds($this->company_id)));
+        $in  = $this->lines->filter(fn ($l) => isset($cash[(int) $l->account_id]) && (float) $l->debit > 0)->pluck('account_id')->map('intval');
+        $out = $this->lines->filter(fn ($l) => isset($cash[(int) $l->account_id]) && (float) $l->kredit > 0)->pluck('account_id')->map('intval');
+
+        return $in->isNotEmpty() && $out->isNotEmpty() && $in->merge($out)->unique()->count() > 1;
+    }
+
+    /**
+     * Jurnal yang hanya boleh diposting pemberi persetujuan (izin
+     * CashTransferApprove, default Owner): pindah dana antar rekening, dan
+     * jurnal Saldo Awal (dulu jadi celah: pindah dana berjenis "Saldo Awal"
+     * lolos dan di laporan kas tampil sebagai saldo awal, bukan mutasi).
+     */
+    public function needsOwnerApproval(): bool
+    {
+        return $this->document_type === 'saldo_awal' || $this->isCashTransfer();
+    }
+
+    /**
+     * Sidik isi jurnal (tanggal, keterangan, baris). Dipakai saat Owner
+     * menyetujui: bila draft diubah orang lain setelah jendela konfirmasi
+     * dibuka, yang diposting bukan yang diperiksa → ditolak.
+     */
+    public function contentFingerprint(): string
+    {
+        $lines = JournalEntryLine::query()->where('journal_entry_id', $this->id)->orderBy('id')
+            ->get(['account_id', 'debit', 'kredit', 'description'])
+            ->map(fn ($l) => [(int) $l->account_id, (string) (float) $l->debit, (string) (float) $l->kredit, (string) $l->description]);
+
+        return md5(json_encode([
+            (string) $this->entry_date, (string) $this->description, (string) $this->document_type, $lines->all(),
+        ]));
+    }
+
+    /** Draft yang menunggu diposting pemberi persetujuan — lihat needsOwnerApproval(). */
+    public function scopePendingOwnerApproval(Builder $query, int $companyId): Builder
+    {
+        $cash = array_map('intval', Account::cashAccountIds($companyId)) ?: [0];
+
+        return $query->where('status', 'draft')
+            ->where(fn ($q) => $q->where('document_type', 'saldo_awal')
+                ->orWhere(fn ($t) => $t
+                    ->whereHas('lines', fn ($l) => $l->whereIn('account_id', $cash)->where('debit', '>', 0))
+                    ->whereHas('lines', fn ($l) => $l->whereIn('account_id', $cash)->where('kredit', '>', 0))));
     }
 
     public function isDraft(): bool

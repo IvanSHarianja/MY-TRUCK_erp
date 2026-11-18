@@ -145,6 +145,14 @@ class MaterialPurchaseService
             $journal = $this->postPurchaseJournal($purchase, $company, $material, $vendor, $matlUnit, $method);
             $purchase->update(['journal_entry_id' => $journal->id]);
 
+            // Kredit → masuk daftar Hutang & Cicilan dengan tanggal jatuh tempo.
+            if ($method === 'kredit') {
+                // Pembuat yang sama dengan pembelian — jangan sampai utang tercatat
+                // di jurnal tapi tidak muncul di menu Hutang.
+                $actor = \App\Models\User::findOrFail($purchase->created_by);
+                app(DebtService::class)->createForPurchase($purchase, $data['due_date'] ?? null, $actor);
+            }
+
             // Update material stock + MAC (via direct DB — hindari observer loop)
             DB::table('materials')
                 ->where('id', $material->id)

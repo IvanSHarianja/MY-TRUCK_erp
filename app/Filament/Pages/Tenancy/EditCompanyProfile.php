@@ -39,12 +39,53 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Illuminate\Support\Facades\DB;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 class EditCompanyProfile extends EditTenantProfile
 {
     public static function getLabel(): string
     {
         return 'Profil Perusahaan';
+    }
+
+    /** Hanya Owner PT ini yang boleh mengganti tanda tangan & cap invoice. */
+    protected static function isOwner(): bool
+    {
+        $tenant = \Filament\Facades\Filament::getTenant();
+
+        return $tenant !== null && (auth()->user()?->isRoleIn($tenant, \App\Enums\Role::Owner) ?? false);
+    }
+
+    /**
+     * Simpan tanda tangan / cap setelah latar kertasnya dihapus (PNG transparan).
+     * Bila tinta tidak terdeteksi, file asli disimpan apa adanya + peringatan.
+     */
+    protected static function storeCleaned(TemporaryUploadedFile $file, string $mode): string
+    {
+        $dir = 'company-signatures';
+        try {
+            $png = \App\Support\SignatureImageCleaner::clean($file->get(), $mode);
+            $path = $dir . '/' . \Illuminate\Support\Str::ulid() . '.png';
+            \Illuminate\Support\Facades\Storage::disk('local')->put($path, $png);
+
+            return $path;
+        } catch (\RuntimeException $e) {
+            if (str_contains($e->getMessage(), 'terlalu besar')) {
+                // Gambar raksasa juga tidak layak disimpan apa adanya.
+                Notification::make()->danger()->title('Gambar ditolak')->body($e->getMessage())->persistent()->send();
+                throw \Illuminate\Validation\ValidationException::withMessages(['signature_path' => $e->getMessage()]);
+            }
+            Notification::make()->warning()->title('Latar tidak dapat dihapus otomatis')
+                ->body($e->getMessage() . ' Gambar disimpan apa adanya.')->persistent()->send();
+
+            return $file->store($dir, 'local');
+        } catch (\Throwable $e) {
+            report($e);
+            Notification::make()->warning()->title('Latar tidak dapat dihapus otomatis')
+                ->body('Gambar disimpan apa adanya.')->persistent()->send();
+
+            return $file->store($dir, 'local');
+        }
     }
 
     public function form(Schema $schema): Schema
@@ -67,7 +108,9 @@ class EditCompanyProfile extends EditTenantProfile
 
                         TextInput::make('owner_name')
                             ->label('Nama Pimpinan')
-                            ->placeholder('Digunakan untuk tanda tangan laporan')
+                            ->placeholder('mis. Budi Santoso')
+                            // Dulu tertulis "untuk tanda tangan laporan" — padahal hanya invoice yang memakainya.
+                            ->helperText('Dicetak sebagai penanda tangan di invoice.')
                             ->maxLength(255),
 
                         Select::make('fiscal_year')
@@ -128,6 +171,38 @@ class EditCompanyProfile extends EditTenantProfile
                             ->helperText('Format: PNG/JPG. Maksimal 2 MB.'),
                     ])
                     ->collapsed(),
+
+                // Tanda tangan online: dicetak otomatis di setiap invoice. Hanya
+                // Owner yang boleh mengganti — tanda tangan = persetujuan Owner.
+                Section::make('Tanda Tangan & Cap Invoice')
+                    ->description('Dicetak otomatis di setiap invoice, di atas Nama Pimpinan. Cukup foto tanda tangan di kertas — latar kertas & garis buku dihapus otomatis saat disimpan. Hanya Owner yang dapat mengganti.')
+                    ->columns(2)
+                    ->collapsed()
+                    ->schema([
+                        FileUpload::make('signature_path')
+                            ->label('Tanda Tangan')
+                            ->image()
+                            ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
+                            ->disk('local')->directory('company-signatures')->visibility('private')
+                            ->maxSize(5120)
+                            ->imagePreviewHeight('80')
+                            ->helperText('Foto dengan tinta gelap, cahaya rata, tanpa bayangan tangan. Maks. 5 MB.')
+                            ->saveUploadedFileUsing(fn (TemporaryUploadedFile $file) => static::storeCleaned($file, 'signature'))
+                            ->disabled(fn (): bool => ! static::isOwner())
+                            ->dehydrated(fn (): bool => static::isOwner()),
+
+                        FileUpload::make('stamp_path')
+                            ->label('Cap / Stempel PT (opsional)')
+                            ->image()
+                            ->acceptedFileTypes(['image/png', 'image/jpeg', 'image/webp'])
+                            ->disk('local')->directory('company-signatures')->visibility('private')
+                            ->maxSize(5120)
+                            ->imagePreviewHeight('80')
+                            ->helperText('Foto cap di kertas putih polos. Maks. 5 MB.')
+                            ->saveUploadedFileUsing(fn (TemporaryUploadedFile $file) => static::storeCleaned($file, 'stamp'))
+                            ->disabled(fn (): bool => ! static::isOwner())
+                            ->dehydrated(fn (): bool => static::isOwner()),
+                    ]),
 
                 Section::make('🛑 Zona Berbahaya')
                     ->description('Aksi di sini bersifat permanen. Pastikan Anda sudah backup data sebelum melanjutkan.')

@@ -51,6 +51,9 @@ class MaterialSale extends Model
         'cash_account_id',
         'invoice_id',
         'journal_entry_id',
+        'voided_at',
+        'voided_by',
+        'void_reason',
         'notes',
         'created_by',
         'bukti_tf_path',
@@ -59,6 +62,7 @@ class MaterialSale extends Model
     // Integer cast untuk uang. volume tetap decimal karena m³ bisa fractional.
     protected $casts = [
         'sale_date'            => 'date',
+        'voided_at'            => 'datetime',
         'volume'               => 'decimal:2',
         'harga_satuan'         => 'integer',
         'total'                => 'integer',
@@ -156,6 +160,7 @@ class MaterialSale extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    public function isVoided(): bool  { return $this->voided_at !== null; }
     public function isTunai(): bool   { return $this->metode === 'tunai'; }
     public function isInvoice(): bool { return $this->metode === 'invoice'; }
 }

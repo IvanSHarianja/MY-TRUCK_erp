@@ -130,6 +130,7 @@ class ContractChangeService
             ]);
         }
 
+        $this->assertCancellable($contract, $changes);
         $company = Company::findOrFail($contract->company_id);
 
         return DB::transaction(function () use ($contract, $changes, $reason, $user, $company) {
@@ -151,6 +152,34 @@ class ContractChangeService
 
             return $request->refresh();
         });
+    }
+
+    /**
+     * Kontrak dengan pekerjaan yang belum ditagih tidak boleh dibatalkan:
+     * Tagih hanya untuk kontrak aktif, jadi log & mobilisasi itu tidak akan
+     * pernah bisa ditagih (pendapatan hilang diam-diam).
+     */
+    private function assertCancellable(Model $contract, array $changes): void
+    {
+        if (($changes['status']['new'] ?? null) !== 'batal') {
+            return;
+        }
+
+        $unbilled = match (true) {
+            $contract instanceof \App\Models\ArmadaContract =>
+                \App\Models\RitLog::withoutGlobalScopes()->where('armada_contract_id', $contract->getKey())->whereNull('invoice_id')->count()
+                + \App\Models\ArmadaMobilization::withoutGlobalScopes()->where('armada_contract_id', $contract->getKey())->whereNull('invoice_id')->count(),
+            $contract instanceof \App\Models\RentalContract =>
+                \App\Models\RentalLog::withoutGlobalScopes()->where('rental_contract_id', $contract->getKey())->whereNull('invoice_id')->count(),
+            default => 0,
+        };
+
+        if ($unbilled > 0) {
+            throw ValidationException::withMessages([
+                'status' => "Kontrak masih punya {$unbilled} catatan pekerjaan yang belum ditagih. "
+                    . 'Tagih dulu (atau hapus catatan yang salah) sebelum kontrak dibatalkan.',
+            ]);
+        }
     }
 
     public function approve(ContractChangeRequest $request, User $user, ?string $note = null): void
@@ -185,6 +214,8 @@ class ContractChangeService
                         . '). Tolak pengajuan ini lalu minta diajukan ulang.',
                 ]);
             }
+
+            $this->assertCancellable($contract, $locked->changes);
 
             foreach ($locked->changes as $field => $c) {
                 $contract->{$field} = $c['new'];

@@ -28,6 +28,7 @@ class EditJournalEntry extends EditRecord
                 ->label('Post Jurnal')
                 ->icon(Heroicon::CheckCircle)
                 ->color('success')
+                ->authorize(fn (): bool => auth()->user()?->canCurrent(\App\Enums\Permission::JournalPost) ?? false)
                 ->visible(fn (): bool => $this->record->isDraft())
                 ->requiresConfirmation()
                 ->modalHeading('Post Jurnal')

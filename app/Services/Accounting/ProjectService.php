@@ -306,6 +306,9 @@ class ProjectService
 
         $invDate = $invoiceDate ? Carbon::parse($invoiceDate) : Carbon::today();
         $company = Company::findOrFail($project->company_id);
+        // Dicek di depan: termin yang lunas penuh dari DP tidak membuat invoice,
+        // jadi pengecekan periode di InvoiceService::issue tidak pernah jalan.
+        $this->journalService->assertPeriodOpen($company, $invDate->year, $invDate->month);
 
         $bongUnit = BusinessUnit::withoutGlobalScopes()
             ->where('company_id', $company->id)
@@ -405,6 +408,58 @@ class ProjectService
         });
     }
 
+    /**
+     * Batalkan termin: tertagih_pct & dp_dipotong dikembalikan, proyek selesai
+     * dibuka lagi, jurnal pemotongan DP di-void (bila belum), termin dihapus.
+     * Dipakai void invoice termin (InvoiceObserver) dan pembatalan termin yang
+     * lunas penuh dari DP (tanpa invoice) — lihat cancelDpOnlyTermin().
+     */
+    public function rollbackTermin(ProjectTermin $termin, string $reason): void
+    {
+        $project = Project::withoutGlobalScopes()->lockForUpdate()->find($termin->project_id);
+        if ($project) {
+            $newTertagih = max(0, round((float) $project->tertagih_pct - (float) $termin->termin_pct, 2));
+            // BUG-24: proyek selesai yang tertagihnya turun dibuka lagi supaya bisa ditagih ulang.
+            $newStatus = ($project->status === 'selesai' && $newTertagih < 100 - 0.005) ? 'berjalan' : $project->status;
+
+            $project->update([
+                'tertagih_pct' => $newTertagih,
+                'status'       => $newStatus,
+                'dp_dipotong'  => max(0, round((float) $project->dp_dipotong - (float) $termin->dp_potong, 2)),
+            ]);
+        }
+
+        // Hapus termin DULU: observer void DPPOT melihat termin sudah tidak ada → tidak memproses ulang.
+        $dpJournalId = $termin->dp_journal_id;
+        $termin->delete();
+
+        if ($dpJournalId) {
+            $dpJournal = JournalEntry::withoutGlobalScopes()->find($dpJournalId);
+            if ($dpJournal && $dpJournal->isPosted()) {
+                $this->journalService->void($dpJournal, $reason);
+            }
+        }
+    }
+
+    /** Termin yang lunas penuh dari DP (tanpa invoice) tidak punya Void invoice — batalkan di sini. */
+    public function cancelDpOnlyTermin(ProjectTermin $termin, string $reason): void
+    {
+        if ($termin->invoice_id) {
+            throw ValidationException::withMessages(['termin' => 'Termin ini punya invoice — batalkan lewat Void invoice-nya di Tagihan & Piutang.']);
+        }
+        if (mb_strlen(trim($reason)) < 3) {
+            throw ValidationException::withMessages(['reason' => 'Isi alasan pembatalan.']);
+        }
+        $company = Company::withoutGlobalScopes()->findOrFail($termin->company_id);
+        $this->journalService->assertPeriodOpen($company, now()->year, now()->month);
+
+        DB::transaction(function () use ($termin, $reason) {
+            $locked = ProjectTermin::withoutGlobalScopes()->lockForUpdate()->find($termin->id)
+                ?? throw ValidationException::withMessages(['termin' => 'Termin sudah dibatalkan.']);
+            $this->rollbackTermin($locked, "Batal termin {$locked->termin_number}: {$reason}");
+        });
+    }
+
     /** Validasi termin terhadap proyek yang SUDAH di-lock. */
     private function assertTerminAllowed(Project $project, float $terminPct): void
     {
@@ -435,6 +490,11 @@ class ProjectService
     /**
      * Potongan DP untuk termin ini: proporsional, maksimal sisa DP; termin
      * penutup (tertagih jadi 100%) mengambil seluruh sisa DP.
+     *
+     * SELALU dibatasi nilai bruto termin: DP yang melebihi nilai termin tidak
+     * boleh menjadi pendapatan (dulu kontrak 100 jt bisa mencatat pendapatan
+     * 108 jt). Kelebihan DP tetap di Uang Muka Proyek — kewajiban yang harus
+     * dikembalikan / diperhitungkan dengan klien.
      */
     public function dpDeduction(Project $project, float $terminPct): float
     {
@@ -442,12 +502,13 @@ class ProjectService
         if ($sisaDp <= 0) {
             return 0.0;
         }
+        $gross = round((float) $project->nilai_kontrak * $terminPct / 100, 2);
 
         if (round((float) $project->tertagih_pct + $terminPct, 2) >= 100.00) {
-            return $sisaDp;
+            return min($sisaDp, $gross);
         }
 
-        return min($sisaDp, round((float) $project->dp_diterima * $terminPct / 100, 2));
+        return min($sisaDp, $gross, round((float) $project->dp_diterima * $terminPct / 100, 2));
     }
 
     private function postDpDeduction(Company $company, Project $project, ProjectTermin $termin, float $amount, Carbon $date, ?BusinessUnit $bong): JournalEntry

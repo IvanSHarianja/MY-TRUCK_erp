@@ -116,6 +116,16 @@ class MaterialPurchaseForm
                     ->visible(fn (Get $get) => $get('payment_method') === 'tunai')
                     ->columnSpan(1),
 
+                \Filament\Forms\Components\DatePicker::make('due_date')
+                    ->label('Jatuh Tempo Pembayaran')
+                    ->native(false)
+                    ->default(now()->addDays(30))
+                    ->required(fn (Get $get) => $get('payment_method') === 'kredit')
+                    ->helperText('Masuk ke menu Hutang & Cicilan — diingatkan menjelang jatuh tempo.')
+                    ->visible(fn (Get $get) => $get('payment_method') === 'kredit')
+                    ->dehydrated(fn (Get $get) => $get('payment_method') === 'kredit')
+                    ->columnSpan(1),
+
                 Textarea::make('notes')
                     ->label('Catatan')
                     ->rows(2)

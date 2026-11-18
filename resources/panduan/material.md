@@ -20,7 +20,7 @@ Sparepart tidak muncul di form Penjualan Material, dan material dagangan tidak m
 Menu **Pembelian Material** → **Input Pembelian**.
 
 - **Tunai** — pilih rekening kas/bank yang dipakai membayar.
-- **Kredit** — wajib pilih vendor; tercatat sebagai utang vendor.
+- **Kredit** — wajib pilih vendor dan **Jatuh Tempo Pembayaran**; tercatat sebagai utang vendor dan otomatis masuk menu **Hutang & Cicilan** (dibayar dari sana).
 
 Setiap pembelian otomatis: menambah stok, menghitung ulang MAC, dan membuat jurnal (**Persediaan Material** bertambah, Kas berkurang / Utang bertambah). Akun yang dibutuhkan ada di [Paket Akun per Fitur](#coa-paket).
 
@@ -49,6 +49,15 @@ Stok berkurang otomatis dan **HPP** dijurnal memakai MAC saat penjualan.
 | Lain-lain | nominal + keterangan | Beban Lain |
 
 Pilih **Truk** supaya biayanya masuk **Laba Rugi per Unit**. Bagian bawah form menampilkan **Perkiraan Margin** sebelum disimpan.
+
+**Membatalkan penjualan:**
+
+- **Tunai** — tombol **Batalkan** di daftar penjualan (isi alasan). Jurnal penjualan, HPP, dan biaya kirim dibalik, stok dikembalikan, dan penjualan ditandai **DIBATALKAN** (tetap tersimpan untuk jejak audit). Memakai izin *Void Journal*.
+- Stok yang kembali dinilai sebesar biaya saat barang keluar, lalu **MAC dihitung ulang** — sehingga stok × MAC tetap sama dengan saldo Persediaan meski harga beli sudah berubah.
+- **Invoice** — void invoice-nya di **Tagihan & Piutang**; efeknya sama.
+- Jurnal HPP atau biaya kirim **tidak bisa di-void sendirian** dari Jurnal Umum — batalkan penjualannya. Void jurnal penjualan tunai dari Jurnal Umum otomatis membatalkan penjualannya.
+
+**Membatalkan pembelian:** void jurnal pembeliannya (*PB…*) di Jurnal Umum — stok & MAC dikembalikan. Untuk pembelian **kredit**, hutang vendornya ikut terhapus dari menu Hutang & Cicilan. Bila hutang itu sudah ada pembayarannya, void ditolak: batalkan pembayarannya dulu di menu Hutang.
 
 ### Laporan Margin Penjualan
 
