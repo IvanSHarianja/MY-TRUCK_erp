@@ -306,13 +306,20 @@ class UserManagement extends Page implements HasTable
                             return;
                         }
 
-                        // Cegah owner terakhir di-demote
-                        if ($currentRole === 'owner' && $newRole !== 'owner') {
-                            $ownerCount = $tenant->users()->wherePivot('role', 'owner')->count();
-                            if ($ownerCount <= 1) {
+                        // Cegah PT kehilangan owner AKTIF terakhir — baik karena role
+                        // diturunkan maupun karena dinonaktifkan. Dulu yang dicek hanya
+                        // perubahan role, dan owner nonaktif ikut dihitung.
+                        $losesOwner = $currentRole === 'owner' && ($newRole !== 'owner' || ! $data['is_active']);
+                        if ($losesOwner) {
+                            $otherActiveOwners = $tenant->users()
+                                ->wherePivot('role', 'owner')
+                                ->wherePivot('is_active', true)
+                                ->where('users.id', '!=', $record->id)
+                                ->count();
+                            if ($otherActiveOwners === 0) {
                                 Notification::make()
-                                    ->title('Tidak bisa demote owner terakhir')
-                                    ->body('PT harus punya minimal 1 owner. Promote user lain ke owner dulu.')
+                                    ->title('Tidak bisa mengubah owner terakhir')
+                                    ->body('PT harus punya minimal 1 owner aktif. Jadikan user lain owner dulu.')
                                     ->danger()
                                     ->send();
                                 return;
@@ -323,6 +330,10 @@ class UserManagement extends Page implements HasTable
                             'role'      => $data['role'],
                             'is_active' => $data['is_active'],
                         ]);
+                        // Peran di-cache per instance user (User::roleIn) — buang supaya
+                        // sisa request ini memakai peran baru (penting bila mengubah diri sendiri).
+                        $record->forgetRoleCache();
+                        auth()->user()?->forgetRoleCache();
 
                         Notification::make()
                             ->title('Role diperbarui')
@@ -356,8 +367,13 @@ class UserManagement extends Page implements HasTable
                         $currentRole = $record->companies->first()?->pivot->role;
 
                         if ($currentRole === 'owner') {
-                            $ownerCount = $tenant->users()->wherePivot('role', 'owner')->count();
-                            if ($ownerCount <= 1) {
+                            // Hanya owner AKTIF lain yang dihitung (owner nonaktif tidak bisa mengelola PT).
+                            $otherActiveOwners = $tenant->users()
+                                ->wherePivot('role', 'owner')
+                                ->wherePivot('is_active', true)
+                                ->where('users.id', '!=', $record->id)
+                                ->count();
+                            if ($otherActiveOwners === 0) {
                                 Notification::make()
                                     ->title('Tidak bisa cabut owner terakhir')
                                     ->body('PT harus punya minimal 1 owner.')

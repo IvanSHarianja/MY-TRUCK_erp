@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ArmadaContracts;
 use App\Filament\Resources\ArmadaContracts\Pages\CreateArmadaContract;
 use App\Filament\Resources\ArmadaContracts\Pages\EditArmadaContract;
 use App\Filament\Resources\ArmadaContracts\Pages\ListArmadaContracts;
+use App\Filament\Resources\ArmadaContracts\RelationManagers\MobilizationsRelationManager;
 use App\Filament\Resources\ArmadaContracts\RelationManagers\RitLogsRelationManager;
 use App\Filament\Resources\ArmadaContracts\Schemas\ArmadaContractForm;
 use App\Filament\Resources\ArmadaContracts\Tables\ArmadaContractsTable;
@@ -47,6 +48,7 @@ class ArmadaContractResource extends Resource
     {
         return [
             RitLogsRelationManager::class,
+            MobilizationsRelationManager::class,
         ];
     }
 

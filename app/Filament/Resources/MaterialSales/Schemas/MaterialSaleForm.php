@@ -92,8 +92,28 @@ class MaterialSaleForm
                             })
                             ->searchable(),
 
+                        // Jual per satuan material (M³/ton) atau per RIT (masukan 2026-11-18).
+                        Select::make('satuan_jual')
+                            ->label('Dijual per')
+                            ->native(false)
+                            ->default('satuan')
+                            ->required()
+                            ->options(['satuan' => 'Satuan material (M³ / ton)', 'rit' => 'Rit (per truk)'])
+                            ->live(),
+
+                        TextInput::make('jumlah_rit')
+                            ->label('Jumlah Rit')
+                            ->numeric()
+                            ->minValue(0)
+                            ->step(1)
+                            ->live(onBlur: true)
+                            ->required(fn (Get $get): bool => $get('satuan_jual') === 'rit')
+                            ->helperText(fn (Get $get): string => $get('satuan_jual') === 'rit'
+                                ? 'Dasar tagihan (rit × harga per rit) dan ongkos supir & BM per rit.'
+                                : 'Opsional — isi bila ada ongkos supir / BM per rit.'),
+
                         TextInput::make('volume')
-                            ->label('Volume')
+                            ->label(fn (Get $get): string => $get('satuan_jual') === 'rit' ? 'Volume Keluar dari Stok' : 'Volume')
                             ->required()
                             ->numeric()
                             ->minValue(0.01)
@@ -179,23 +199,92 @@ class MaterialSaleForm
                             }),
 
                         TextInput::make('harga_satuan')
-                            ->label('Harga per Satuan (Rp)')
+                            ->label(fn (Get $get): string => $get('satuan_jual') === 'rit' ? 'Harga per Rit (Rp)' : 'Harga per Satuan (Rp)')
                             ->required()
                             ->rupiah()
                             ->live(onBlur: true)
-                            ->helperText('Otomatis terisi dari master material, bisa di-override'),
+                            ->helperText(fn (Get $get): string => $get('satuan_jual') === 'rit'
+                                ? 'Harga satu rit (satu truk) sampai lokasi.'
+                                : 'Otomatis terisi dari master material, bisa di-override'),
 
                         Placeholder::make('total_preview')
                             ->label('Total')
                             ->content(function (Get $get): HtmlString {
-                                $vol  = (float) ($get('volume') ?? 0);
-                                $harga = (float) ($get('harga_satuan') ?? 0);
-                                $total = $vol * $harga;
+                                $qty   = $get('satuan_jual') === 'rit' ? (float) ($get('jumlah_rit') ?? 0) : (float) ($get('volume') ?? 0);
+                                $harga = self::money($get('harga_satuan'));
+                                $total = $qty * $harga;
                                 return new HtmlString(
                                     '<div style="font-size: 18px; font-weight: 700; color: var(--primary-600);">'
                                     . 'Rp ' . number_format($total, 0, ',', '.')
                                     . '</div>'
                                 );
+                            }),
+                    ]),
+
+                // Biaya armada per penjualan (masukan atasan 2026-11-18): ongkos supir
+                // per rit, UM supir, BBM, BM per rit, portal, lain-lain. Dijurnal
+                // Dr beban / Cr kas, ditandai truk → laporan Margin Penjualan.
+                Section::make('Pengiriman (Armada)')
+                    ->description('Biaya mengantar material. Dibayar tunai dari kas yang dipilih. Kosongkan bila klien mengambil sendiri.')
+                    ->columns(3)
+                    ->collapsible()
+                    ->schema([
+                        Select::make('asset_id')
+                            ->label('Truk')
+                            ->native(false)
+                            ->searchable()
+                            ->options(fn () => \App\Models\Asset::query()
+                                ->whereIn('type', ['dump_truck', 'kendaraan_operasional'])
+                                ->orderBy('asset_code')->get()
+                                ->mapWithKeys(fn ($a) => [$a->id => "[{$a->asset_code}] {$a->name}"])->all()),
+
+                        Select::make('driver_id')
+                            ->label('Supir')
+                            ->native(false)
+                            ->searchable()
+                            ->options(fn () => \App\Models\Employee::query()->where('is_active', true)->where('position', 'driver')
+                                ->orderBy('name')->get()
+                                ->mapWithKeys(fn ($e) => [$e->id => "[{$e->employee_id}] {$e->name}"])->all()),
+
+                        Select::make('biaya_cash_account_id')
+                            ->label('Dibayar dari Kas')
+                            ->native(false)
+                            ->options(function () {
+                                $tenant = Filament::getTenant();
+
+                                return $tenant ? Account::cashAccounts($tenant->getKey())
+                                    ->mapWithKeys(fn ($a) => [$a->id => "[{$a->code}] {$a->name}"])->all() : [];
+                            })
+                            ->helperText('Kosong = sama dengan akun penerimaan / kas utama.'),
+
+                        TextInput::make('ongkos_supir_per_rit')->label('Ongkos Supir per Rit')->rupiah()->live(onBlur: true),
+                        TextInput::make('bm_per_rit')->label('BM (Bongkar Muat) per Rit')->rupiah()->live(onBlur: true),
+                        TextInput::make('uang_makan_supir')->label('Uang Makan Supir')->rupiah()->live(onBlur: true),
+                        TextInput::make('biaya_bbm')->label('BBM')->rupiah()->live(onBlur: true),
+                        TextInput::make('biaya_portal')->label('Portal')->rupiah()->live(onBlur: true),
+                        TextInput::make('biaya_lain')->label('Lain-lain')->rupiah()->live(onBlur: true),
+                        TextInput::make('biaya_lain_ket')->label('Keterangan Lain-lain')->maxLength(150)->columnSpan(2),
+
+                        Placeholder::make('margin_preview')
+                            ->label('Perkiraan Margin')
+                            ->columnSpanFull()
+                            ->content(function (Get $get): HtmlString {
+                                $rp    = fn ($n) => 'Rp ' . number_format((float) $n, 0, ',', '.');
+                                $rit   = (float) ($get('jumlah_rit') ?? 0);
+                                $qty   = $get('satuan_jual') === 'rit' ? $rit : (float) ($get('volume') ?? 0);
+                                $jual  = $qty * self::money($get('harga_satuan'));
+                                $kirim = $rit * (self::money($get('ongkos_supir_per_rit')) + self::money($get('bm_per_rit')))
+                                    + self::money($get('uang_makan_supir')) + self::money($get('biaya_bbm'))
+                                    + self::money($get('biaya_portal')) + self::money($get('biaya_lain'));
+                                $mat   = $get('material_id') ? Material::find($get('material_id')) : null;
+                                $hpp   = (float) ($get('volume') ?? 0) * (float) ($mat?->current_mac ?: $mat?->harga_pokok ?: 0);
+                                $margin = $jual - $hpp - $kirim;
+                                $pct   = $jual > 0 ? round($margin / $jual * 100, 1) : 0;
+
+                                return new HtmlString(sprintf(
+                                    '<div style="line-height:1.8">Penjualan %s − HPP %s − biaya kirim %s = <strong style="color:%s">%s (%s%%)</strong></div>',
+                                    $rp($jual), $rp($hpp), $rp($kirim), $margin < 0 ? '#dc2626' : '#059669', $rp($margin), $pct,
+                                ));
                             }),
                     ]),
 
@@ -238,5 +327,11 @@ class MaterialSaleForm
                             ->rows(2),
                     ]),
             ]);
+    }
+
+    /** Nilai isian rupiah (bisa "1.500.000" dari mask) → angka. */
+    private static function money(mixed $value): float
+    {
+        return (float) (app(\App\Services\Import\AssetImportService::class)->money($value) ?? 0);
     }
 }

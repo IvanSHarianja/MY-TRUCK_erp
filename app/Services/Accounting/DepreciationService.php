@@ -261,8 +261,11 @@ class DepreciationService
             $company->id,
         );
 
+        // Akumulasi sebelum MY-TRUCK (aset lama / import) ikut membatasi sisa.
+        $awal = (float) $asset->akumulasi_awal;
+
         if (! $accAkumulasi) {
-            return 0.0;
+            return $awal;
         }
 
         // Net: kredit - debit. Hanya line dari jurnal posted (bukan void/draft)
@@ -276,7 +279,7 @@ class DepreciationService
             ->selectRaw('COALESCE(SUM(kredit), 0) - COALESCE(SUM(debit), 0) AS net')
             ->value('net');
 
-        return (float) $result;
+        return $awal + (float) $result;
     }
 
     /**
@@ -505,7 +508,8 @@ class DepreciationService
      */
     private function getCurrentAkumulasi(Asset $asset): float
     {
-        return (float) DB::table('journal_entry_lines as jl')
+        // + akumulasi sebelum MY-TRUCK (aset lama / import)
+        return (float) $asset->akumulasi_awal + (float) DB::table('journal_entry_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
             ->where('je.company_id', $asset->company_id)

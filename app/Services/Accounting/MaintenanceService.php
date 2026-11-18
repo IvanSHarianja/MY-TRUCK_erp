@@ -74,9 +74,11 @@ class MaintenanceService
         $maintenanceDate = Carbon::parse($data['maintenance_date']);
         $items = $this->normalizeItems($data['items'] ?? [], $company);
 
-        // Pemakaian sparepart mengubah stok — periode wajib terbuka SEBELUM
-        // stok disentuh, supaya tidak ada stok berkurang tanpa jurnal.
-        if ($items) {
+        // Periode wajib terbuka SEBELUM apa pun disimpan, bila servis ini
+        // menghasilkan jurnal (biaya jasa ATAU sparepart). Dulu hanya dicek saat
+        // ada sparepart: servis jasa saja di periode tertutup tersimpan tanpa
+        // jurnal beban (postExpenseJournal hanya Log::info lalu skip).
+        if ($items || (float) ($data['cost'] ?? 0) > 0) {
             $this->journalService->assertPeriodOpen($company, $maintenanceDate->year, $maintenanceDate->month);
         }
 
@@ -127,11 +129,25 @@ class MaintenanceService
         $maintenanceDate = Carbon::parse($data['maintenance_date'] ?? $log->maintenance_date);
         $items = $this->normalizeItems($data['items'] ?? [], $company);
 
-        if ($items || $log->items()->exists()) {
+        // Tolak SEBELUM jurnal lama di-void: kalau tanggal baru jatuh di periode
+        // tertutup, dulu jurnal lama sudah dibatalkan tapi jurnal baru di-skip →
+        // beban servis hilang diam-diam.
+        $producesJournal = $items || (float) ($data['cost'] ?? 0) > 0 || $log->items()->exists() || $log->journal_entry_id;
+        if ($producesJournal) {
             $this->journalService->assertPeriodOpen($company, $maintenanceDate->year, $maintenanceDate->month);
         }
 
         return DB::transaction(function () use ($log, $data, $asset, $company, $maintenanceDate, $items) {
+            // Pemakaian lama (qty & harga pokok per material) — dipakai ulang dengan
+            // harga yang sama supaya edit tanpa perubahan sparepart tidak menggeser nilai.
+            $prior = $log->items()->get()
+                ->groupBy('material_id')
+                ->map(fn ($g) => [
+                    'qty'       => (float) $g->sum('qty'),
+                    'unit_cost' => (float) $g->sum('qty') > 0 ? (float) $g->sum('total') / (float) $g->sum('qty') : 0.0,
+                ])
+                ->all();
+
             $this->voidExistingJournal($log);
             $this->restoreSpareparts($log);
 
@@ -155,7 +171,7 @@ class MaintenanceService
             });
 
             $log->refresh();
-            $this->consumeSpareparts($log, $items);
+            $this->consumeSpareparts($log, $items, $prior);
             $log->load('items');
 
             if ($log->totalCost() > 0) {
@@ -252,7 +268,7 @@ class MaintenanceService
                 'posted_at'        => now(),
                 'total_amount'     => $total,
             ],
-            linesFactory: function (JournalEntry $entry) use ($accBeban, $accKas, $asset, $log, $cost, $total, $sparepartLines): array {
+            linesFactory: function (JournalEntry $entry) use ($accBeban, $accKas, $asset, $log, $cost, $total, $sparepartLines, $vendorName): array {
                 $lines = [[
                     'account_id'  => $accBeban->id,
                     'asset_id'    => $asset->id,     // tag untuk P&L per unit
@@ -265,7 +281,9 @@ class MaintenanceService
                     $lines[] = [
                         'account_id'  => $accKas->id,
                         // asset_id di sisi kas: null (kas tidak related aset spesifik)
-                        'description' => 'Pembayaran jasa maintenance ' . optional($asset)->asset_code,
+                        // Nama bengkel ikut supaya terbaca di Buku Besar akun kas.
+                        'description' => 'Pembayaran jasa maintenance ' . optional($asset)->asset_code
+                            . ($vendorName ? ' — ' . $vendorName : ''),
                         'debit'       => 0,
                         'kredit'      => $cost,
                     ];
@@ -334,13 +352,20 @@ class MaintenanceService
                 $stockBefore = (float) $material->current_stock;
                 $qty         = (float) $item->qty;
                 $stockAfter  = $stockBefore + $qty;
+                $macBefore   = (float) $material->current_mac;
+
+                // Barang kembali dengan HARGA POKOK ASLINYA → MAC dihitung ulang.
+                // Dulu MAC dibiarkan: bila ada pembelian di harga lain sejak servis,
+                // nilai stok (qty × MAC) tidak lagi sama dengan saldo Persediaan di
+                // buku (jurnal void mengembalikan qty × harga asli).
+                $macAfter = $stockAfter > 0
+                    ? round(($stockBefore * $macBefore + $qty * (float) $item->unit_cost) / $stockAfter, 4)
+                    : $macBefore;
 
                 DB::table('materials')
                     ->where('id', $material->id)
-                    ->update(['current_stock' => $stockAfter, 'updated_at' => now()]);
+                    ->update(['current_stock' => $stockAfter, 'current_mac' => $macAfter, 'updated_at' => now()]);
 
-                // MAC tidak berubah — pemakaian tidak pernah mengubah MAC,
-                // jadi pengembaliannya pun tidak.
                 MaterialStockMovement::create([
                     'company_id'    => $material->company_id,
                     'material_id'   => $material->id,
@@ -351,8 +376,8 @@ class MaintenanceService
                     'unit_cost'     => (float) $item->unit_cost,
                     'stock_before'  => $stockBefore,
                     'stock_after'   => $stockAfter,
-                    'mac_before'    => (float) $material->current_mac,
-                    'mac_after'     => (float) $material->current_mac,
+                    'mac_before'    => $macBefore,
+                    'mac_after'     => $macAfter,
                     'movement_date' => now()->toDateString(),
                     'notes'         => "Restore sparepart dari pemeliharaan #{$log->id}",
                     'created_by'    => Auth::id(),
@@ -366,9 +391,15 @@ class MaintenanceService
     /**
      * Catat pemakaian sparepart: kurangi stok, bekukan MAC, catat movement.
      *
+     * $prior (saat EDIT log): pemakaian lama per material [qty, unit_cost].
+     * Sampai sebanyak qty lama dipakai kembali dengan harga pokok LAMA — kebalikan
+     * persis dari restoreSpareparts() — jadi edit yang tidak mengubah sparepart
+     * tidak menggeser beban maupun MAC. Hanya tambahan qty memakai MAC saat ini.
+     *
      * @param array<int, array{material_id: int, qty: float}> $items
+     * @param array<int, array{qty: float, unit_cost: float}> $prior
      */
-    private function consumeSpareparts(AssetMaintenanceLog $log, array $items): void
+    private function consumeSpareparts(AssetMaintenanceLog $log, array $items, array $prior = []): void
     {
         foreach ($items as $row) {
             $material = Material::withoutGlobalScopes()
@@ -402,8 +433,19 @@ class MaintenanceService
                 ]);
             }
 
-            $unitCost   = (float) $material->current_mac;
+            $macBefore = (float) $material->current_mac;
             $stockAfter = $stockBefore - $qty;
+
+            // Bagian yang dipakai ulang dengan harga pokok lama (lihat docblock).
+            $priorQty  = min($qty, (float) ($prior[$material->id]['qty'] ?? 0));
+            $priorCost = (float) ($prior[$material->id]['unit_cost'] ?? 0);
+            $macAfter  = $macBefore;
+            if ($priorQty > 0 && ($stockBefore - $priorQty) > 0) {
+                $macAfter = round(($stockBefore * $macBefore - $priorQty * $priorCost) / ($stockBefore - $priorQty), 4);
+            }
+            $extraQty = $qty - $priorQty;
+            $total    = round($priorQty * $priorCost + $extraQty * $macAfter, 2);
+            $unitCost = $qty > 0 ? round($total / $qty, 4) : 0.0;
 
             if ($unitCost <= 0) {
                 Log::warning(sprintf(
@@ -421,12 +463,12 @@ class MaintenanceService
                 'material_id'              => $material->id,
                 'qty'                      => $qty,
                 'unit_cost'                => $unitCost,
-                'total'                    => round($qty * $unitCost, 2),
+                'total'                    => $total,
             ]);
 
             DB::table('materials')
                 ->where('id', $material->id)
-                ->update(['current_stock' => $stockAfter, 'updated_at' => now()]);
+                ->update(['current_stock' => $stockAfter, 'current_mac' => $macAfter, 'updated_at' => now()]);
 
             MaterialStockMovement::create([
                 'company_id'    => $material->company_id,
@@ -438,8 +480,8 @@ class MaintenanceService
                 'unit_cost'     => $unitCost,
                 'stock_before'  => $stockBefore,
                 'stock_after'   => $stockAfter,
-                'mac_before'    => (float) $material->current_mac,
-                'mac_after'     => (float) $material->current_mac,
+                'mac_before'    => $macBefore,
+                'mac_after'     => $macAfter,
                 'movement_date' => Carbon::parse($log->maintenance_date)->toDateString(),
                 'notes'         => "Pemakaian sparepart pemeliharaan #{$log->id}",
                 'created_by'    => Auth::id(),

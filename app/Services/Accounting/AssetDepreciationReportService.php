@@ -85,7 +85,8 @@ class AssetDepreciationReportService
             $method       = $asset->depreciation_method;
             $price        = (float) $asset->purchase_price;
             $salvage      = (float) $asset->salvage_value;
-            $akumulasi    = (float) ($agg->get($asset->id)->akumulasi ?? 0);
+            // + akumulasi sebelum dicatat di MY-TRUCK (aset lama / hasil import)
+            $akumulasi    = (float) $asset->akumulasi_awal + (float) ($agg->get($asset->id)->akumulasi ?? 0);
             $nilaiBuku    = round($price - $akumulasi, 2);
             $depreciableBase = max(0, $price - $salvage);
 

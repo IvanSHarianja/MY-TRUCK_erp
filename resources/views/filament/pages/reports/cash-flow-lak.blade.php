@@ -175,6 +175,25 @@
                     <td class="subtotal">{{ $fmt($totalPengeluaran) }}</td>
                 </tr>
 
+                {{-- Kas dengan akun lawan yang perannya belum ada di pemetaan LAK --}}
+                @if (($tidakTerpetakan['masuk'] ?? 0) != 0 || ($tidakTerpetakan['keluar'] ?? 0) != 0)
+                    <tr class="section">
+                        <td colspan="4">Belum terpetakan (Peran akun lawan belum ada di format LAK) :</td>
+                    </tr>
+                    <tr>
+                        <td class="maping">LAIN-LAIN MASUK</td>
+                        <td class="desc">Kas masuk dari akun tanpa baris LAK</td>
+                        <td class="detail">{{ $fmt($tidakTerpetakan['masuk']) }}</td>
+                        <td class="subtotal"></td>
+                    </tr>
+                    <tr>
+                        <td class="maping">LAIN-LAIN KELUAR</td>
+                        <td class="desc">Kas keluar ke akun tanpa baris LAK</td>
+                        <td class="detail red">{{ $fmt($tidakTerpetakan['keluar']) }}</td>
+                        <td class="subtotal"></td>
+                    </tr>
+                @endif
+
                 <tr class="spacer"><td colspan="4"></td></tr>
 
                 {{-- SALDO AKHIR --}}

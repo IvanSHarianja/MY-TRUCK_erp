@@ -27,6 +27,7 @@ class Asset extends Model
         'useful_life_days',
         'monthly_target_hours',
         'salvage_value',
+        'akumulasi_awal',
         'account_id',
         'default_business_unit_id',
         'status',
@@ -44,6 +45,7 @@ class Asset extends Model
             // hanya bagaimana Eloquent hidrate saja yang berubah.
             'purchase_price'      => 'integer',
             'salvage_value'       => 'integer',
+            'akumulasi_awal'      => 'integer',
             'useful_life_months'  => 'integer',
             'depreciation_method' => DepreciationMethod::class,
             'useful_life_hours'   => 'decimal:2',
@@ -61,6 +63,22 @@ class Asset extends Model
      * Kalau accounting benar-benar butuh ubah, harus dilakukan manual accountant:
      * void semua DEP-* / DEPUSE-* di periode setelah change-point → baru ubah.
      */
+    /** Field yang menentukan besar penyusutan — terkunci setelah ada jurnal DEP-/DEPUSE-. */
+    public const LOCKED_AFTER_DEPRECIATION = [
+        'depreciation_method', 'type', 'purchase_price', 'salvage_value', 'purchase_date',
+        'useful_life_months', 'akumulasi_awal',
+    ];
+
+    private const LOCKED_LABELS = [
+        'depreciation_method' => 'metode penyusutan',
+        'type'                => 'jenis aset',
+        'purchase_price'      => 'harga beli',
+        'salvage_value'       => 'nilai sisa',
+        'purchase_date'       => 'tanggal beli',
+        'useful_life_months'  => 'umur ekonomis',
+        'akumulasi_awal'      => 'akumulasi penyusutan awal',
+    ];
+
     protected static function booted(): void
     {
         // Tanda "Perlu dilengkapi: harga beli, tanggal beli." dari import Excel
@@ -74,17 +92,23 @@ class Asset extends Model
         });
 
         static::updating(function (Asset $asset) {
-            if (! $asset->isDirty('depreciation_method')) {
+            $dirty = array_keys(array_intersect_key($asset->getDirty(), array_flip(self::LOCKED_AFTER_DEPRECIATION)));
+            if ($dirty === [] || ! $asset->hasPostedDepreciationJournal()) {
                 return;
             }
 
-            if ($asset->hasPostedDepreciationJournal()) {
-                throw new \RuntimeException(sprintf(
-                    "Tidak bisa ubah metode depresiasi aset [%s]: sudah ada jurnal penyusutan (DEP-* / DEPUSE-*). "
-                    . "Void semua jurnal penyusutan terkait terlebih dahulu, atau buat aset baru.",
+            // Dulu hanya metode yang dikunci. Mengganti TIPE memindah akun
+            // akumulasi (batas maksimal membaca 0 → akumulasi bisa melebihi
+            // harga beli); mengganti harga/nilai sisa/umur mengubah tarif bulanan
+            // tanpa memperhitungkan yang sudah disusutkan.
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                $dirty[0] => sprintf(
+                    'Aset [%s] sudah punya jurnal penyusutan — %s tidak bisa diubah. '
+                    . 'Void jurnal penyusutan terkait dulu, atau catat sebagai aset baru.',
                     $asset->asset_code,
-                ));
-            }
+                    implode(', ', array_map(fn ($f) => self::LOCKED_LABELS[$f] ?? $f, $dirty)),
+                ),
+            ]);
         });
     }
 
@@ -146,6 +170,27 @@ class Asset extends Model
             'excavator', 'bulldozer', 'wheel_loader'              => 'RENT',
             default                                                => 'UMUM',
         };
+    }
+
+    /**
+     * Perkiraan akumulasi penyusutan garis lurus dari tanggal beli sampai akhir
+     * bulan SEBELUM $asOf (bulan berjalan disusutkan oleh MY-TRUCK sendiri).
+     * Dipakai saran di form & import aset lama.
+     */
+    public function estimatedAkumulasiAwal(?\Carbon\CarbonInterface $asOf = null): int
+    {
+        $asOf ??= now();
+        $months = (int) $this->useful_life_months;
+        $base   = (float) $this->purchase_price - (float) $this->salvage_value;
+        if (! $this->purchase_date || $months <= 0 || $base <= 0) {
+            return 0;
+        }
+
+        $start   = \Illuminate\Support\Carbon::parse($this->purchase_date)->startOfMonth();
+        $end     = \Illuminate\Support\Carbon::parse($asOf)->startOfMonth();
+        $elapsed = max(0, ($end->year - $start->year) * 12 + ($end->month - $start->month));
+
+        return (int) round(min($base, $base / $months * $elapsed));
     }
 
     public function getMonthlyDepreciationAttribute(): float

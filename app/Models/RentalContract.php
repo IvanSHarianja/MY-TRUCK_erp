@@ -97,7 +97,9 @@ class RentalContract extends Model
     /** Nilai siap tagih */
     public function getNilaiSiapTagihAttribute(): float
     {
-        return round($this->unbilled_jam * (float) $this->tarif_per_jam, 2);
+        // Σ jam × tarif yang terkunci di log (bukan tarif kontrak saat ini).
+        return round((float) $this->rentalLogs()->whereNull('invoice_id')
+            ->sum(\DB::raw('COALESCE(jam_kerja, 0) * COALESCE(tarif, ' . (float) $this->tarif_per_jam . ')')), 2);
     }
 
     public function isAktif(): bool   { return $this->status === 'aktif'; }

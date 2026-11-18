@@ -2,6 +2,7 @@
 
 namespace App\Services\Accounting;
 
+use App\Enums\AccountRole;
 use App\Enums\DepreciationMethod;
 use App\Models\Asset;
 use Illuminate\Support\Carbon;
@@ -60,6 +61,14 @@ class AssetCostPerUnitService
         // di-post di bulan berikutnya tapi period_month-nya bulan sebelumnya (mis.
         // koreksi akuntansi tgl 5 Sep untuk period Agustus) tetap counted di bulan
         // yang benar. Sebelumnya laporan ini miss adjustment tsb.
+        // Rincian biaya per PERAN akun (kode standar sebagai cadangan) — sama dengan
+        // cara jurnal otomatis memilih akun. Dulu hardcode kode: maintenance
+        // membaca 552300 (Beban Asuransi) padahal servis diposting ke 551400 →
+        // selalu 0; sub-akun hasil import COA juga tidak terbaca.
+        $bucket = function (AccountRole $role, string $code): string {
+            return "SUM(CASE WHEN a.role = '{$role->value}' OR a.code = '{$code}' THEN (jl.debit - jl.kredit) ELSE 0 END)";
+        };
+
         $ledgerAgg = DB::table('journal_entry_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
@@ -72,11 +81,11 @@ class AssetCostPerUnitService
                 jl.asset_id,
                 SUM(CASE WHEN a.category='pendapatan' THEN (jl.kredit - jl.debit) ELSE 0 END) as revenue,
                 SUM(CASE WHEN a.category='beban' THEN (jl.debit - jl.kredit) ELSE 0 END) as cost_total,
-                SUM(CASE WHEN a.code IN ('551100') THEN (jl.debit - jl.kredit) ELSE 0 END) as cost_bbm,
-                SUM(CASE WHEN a.code IN ('552200') THEN (jl.debit - jl.kredit) ELSE 0 END) as cost_gaji,
-                SUM(CASE WHEN a.code IN ('551200') THEN (jl.debit - jl.kredit) ELSE 0 END) as cost_premi,
-                SUM(CASE WHEN a.code IN ('552100') THEN (jl.debit - jl.kredit) ELSE 0 END) as cost_penyusutan,
-                SUM(CASE WHEN a.code IN ('552300') THEN (jl.debit - jl.kredit) ELSE 0 END) as cost_maintenance
+                {$bucket(AccountRole::CogsBbm, '551100')} as cost_bbm,
+                {$bucket(AccountRole::OpexGaji, '552200')} as cost_gaji,
+                {$bucket(AccountRole::CogsPremiUangJalan, '551200')} as cost_premi,
+                {$bucket(AccountRole::OpexPenyusutan, '552100')} as cost_penyusutan,
+                {$bucket(AccountRole::CogsMaintenance, '551400')} as cost_maintenance
             ")
             ->groupBy('jl.asset_id')
             ->get()

@@ -287,9 +287,9 @@ class UsageBasedDepreciationTest extends TestCase
         $this->service->runForCompany($company, 2026, 6);
         $this->assertTrue($asset->fresh()->hasPostedDepreciationJournal());
 
-        // 3. Coba ubah method → harus throw RuntimeException
-        $this->expectException(\RuntimeException::class);
-        $this->expectExceptionMessage('Tidak bisa ubah metode depresiasi');
+        // 3. Coba ubah method → ditolak (ValidationException supaya tampil di form)
+        $this->expectException(\Illuminate\Validation\ValidationException::class);
+        $this->expectExceptionMessage('metode penyusutan tidak bisa diubah');
 
         $asset->update(['depreciation_method' => DepreciationMethod::PerHour->value]);
     }

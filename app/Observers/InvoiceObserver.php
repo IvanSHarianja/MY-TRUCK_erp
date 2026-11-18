@@ -58,11 +58,17 @@ class InvoiceObserver
             ->where('invoice_id', $invoice->id)
             ->sum('rit_count');
 
-        if ($unbilledBackCount > 0) {
-            RitLog::withoutGlobalScopes()
-                ->where('invoice_id', $invoice->id)
-                ->update(['invoice_id' => null]);
+        // Lepas SEMUA log (termasuk log per M³/hari dengan rit 0) & ongkos gendong
+        // supaya bisa ditagih ulang.
+        RitLog::withoutGlobalScopes()
+            ->where('invoice_id', $invoice->id)
+            ->update(['invoice_id' => null]);
 
+        \App\Models\ArmadaMobilization::withoutGlobalScopes()
+            ->where('invoice_id', $invoice->id)
+            ->update(['invoice_id' => null]);
+
+        if ($unbilledBackCount > 0) {
             // Atomic decrement (bukan read-modify-write)
             ArmadaContract::withoutGlobalScopes()
                 ->where('id', $contract->id)
@@ -119,7 +125,18 @@ class InvoiceObserver
             $project->update([
                 'tertagih_pct' => $newTertagih,
                 'status'       => $newStatus,
+                // Potongan DP termin ini kembali menjadi sisa DP.
+                'dp_dipotong'  => max(0, round((float) $project->dp_dipotong - (float) $termin->dp_potong, 2)),
             ]);
+        }
+
+        // Batalkan jurnal pemotongan DP (Dr Uang Muka / Cr Pendapatan) termin ini.
+        if ($termin->dp_journal_id) {
+            $dpJournal = \App\Models\JournalEntry::withoutGlobalScopes()->find($termin->dp_journal_id);
+            if ($dpJournal && $dpJournal->isPosted()) {
+                app(\App\Services\Accounting\JournalService::class)
+                    ->void($dpJournal, "Void invoice termin {$invoice->invoice_number}");
+            }
         }
 
         // Hapus termin record (atau bisa pakai soft delete kalau mau audit)
@@ -180,7 +197,45 @@ class InvoiceObserver
                 }
             }
 
+            $this->voidCogsJournal($sale);
+
+            // Penjualan batal → biaya pengirimannya ikut dibatalkan (bila penjualan
+            // dicatat ulang, biaya diinput lagi; tanpa ini biaya terhitung dua kali).
+            if ($sale->biaya_journal_id) {
+                $kirim = \App\Models\JournalEntry::withoutGlobalScopes()->find($sale->biaya_journal_id);
+                if ($kirim && $kirim->isPosted()) {
+                    app(\App\Services\Accounting\JournalService::class)->void($kirim, "Void penjualan {$sale->sale_number}");
+                }
+            }
+
             $sale->update(['invoice_id' => null]);
+        }
+    }
+
+    /**
+     * Balik jurnal HPP penjualan (Dr HPP / Cr Persediaan). Dulu hanya stok yang
+     * dikembalikan: HPP tetap tercatat tanpa pendapatan dan saldo Persediaan di
+     * buku lebih kecil dari nilai stok fisik.
+     *
+     * Jurnal dicari lewat source (sejak 2026-11-17) atau — data lama tanpa
+     * source — No. Bukti "HPP-{no. penjualan}" berjenis jual_beli buatan sistem.
+     */
+    private function voidCogsJournal(MaterialSale $sale): void
+    {
+        $journals = \App\Models\JournalEntry::withoutGlobalScopes()
+            ->where('company_id', $sale->company_id)
+            ->where('status', 'posted')
+            ->where(function ($q) use ($sale) {
+                $q->where(fn ($s) => $s->where('source_type', $sale->getMorphClass())->where('source_id', $sale->id))
+                  ->orWhere(fn ($s) => $s->whereNull('source_type')
+                      ->where('document_type', 'jual_beli')
+                      ->where('document_number', 'HPP-' . $sale->sale_number));
+            })
+            ->get();
+
+        foreach ($journals as $journal) {
+            app(\App\Services\Accounting\JournalService::class)
+                ->void($journal, "Void penjualan {$sale->sale_number}");
         }
     }
 }

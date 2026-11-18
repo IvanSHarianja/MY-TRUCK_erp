@@ -54,14 +54,24 @@ class MaterialSaleService
         $client   = Client::findOrFail($data['client_id']);
         $volume   = (float) $data['volume'];
         $harga    = (float) ($data['harga_satuan'] ?? $material->harga_per_satuan);
-        $total    = round($volume * $harga, 2);
         $saleDate = Carbon::parse($data['sale_date'] ?? today());
         $metode   = $data['metode'] ?? 'tunai';
         $company  = Company::findOrFail($material->company_id);
 
+        // Jual per RIT (masukan atasan 2026-11-18): harga per rit × jumlah rit.
+        // Volume tetap wajib = jumlah keluar dari stok (satuan material).
+        $satuanJual = ($data['satuan_jual'] ?? 'satuan') === 'rit' ? 'rit' : 'satuan';
+        $jumlahRit  = (float) ($data['jumlah_rit'] ?? 0);
+        if ($satuanJual === 'rit' && $jumlahRit <= 0) {
+            throw ValidationException::withMessages(['jumlah_rit' => 'Jumlah rit wajib diisi untuk penjualan per rit.']);
+        }
+        $total = round(($satuanJual === 'rit' ? $jumlahRit : $volume) * $harga, 2);
+
         if ($volume <= 0) {
             throw ValidationException::withMessages(['volume' => 'Volume harus lebih dari 0.']);
         }
+
+        $delivery = $this->normalizeDelivery($data, $company, $jumlahRit);
 
         // Sparepart dipakai sendiri saat servis unit, bukan dijual ke klien.
         // Guard di service (bukan cuma filter dropdown) — form bisa dilewati.
@@ -113,15 +123,17 @@ class MaterialSaleService
 
         return DB::transaction(function () use (
             $data, $material, $client, $volume, $harga, $total, $saleDate,
-            $metode, $company, $matlUnit
+            $metode, $company, $matlUnit, $satuanJual, $jumlahRit, $delivery
         ) {
-            $sale = MaterialSale::create([
+            $sale = MaterialSale::create($delivery + [
                 'company_id'   => $company->id,
                 'sale_number'  => $this->generateSaleNumber($company, $saleDate),
                 'sale_date'    => $saleDate,
                 'client_id'    => $client->id,
                 'material_id'  => $material->id,
                 'volume'       => $volume,
+                'satuan_jual'  => $satuanJual,
+                'jumlah_rit'   => $jumlahRit > 0 ? $jumlahRit : null,
                 'harga_satuan' => $harga,
                 'total'        => $total,
                 'metode'       => $metode,
@@ -143,8 +155,141 @@ class MaterialSaleService
             // Dijalankan setelah revenue posting agar log/urutan jurnal wajar.
             $this->postCogs($sale, $company, $matlUnit);
 
+            // Biaya pengiriman armada (ongkos supir, UM, BBM, BM, portal, lain-lain).
+            $this->postDeliveryCosts($sale->refresh(), $company, $matlUnit);
+
             return $sale->refresh();
         });
+    }
+
+    /**
+     * Bersihkan isian pengiriman: angka ≥ 0, truk/supir/kas milik PT ini.
+     *
+     * @return array<string, mixed> kolom material_sales
+     */
+    private function normalizeDelivery(array $data, Company $company, float $jumlahRit): array
+    {
+        $money = fn (string $k) => max(0, round((float) ($data[$k] ?? 0)));
+
+        $out = [
+            'asset_id'             => null,
+            'driver_id'            => null,
+            'ongkos_supir_per_rit' => $money('ongkos_supir_per_rit'),
+            'uang_makan_supir'     => $money('uang_makan_supir'),
+            'biaya_bbm'            => $money('biaya_bbm'),
+            'bm_per_rit'           => $money('bm_per_rit'),
+            'biaya_portal'         => $money('biaya_portal'),
+            'biaya_lain'           => $money('biaya_lain'),
+            'biaya_lain_ket'       => isset($data['biaya_lain_ket']) ? mb_substr((string) $data['biaya_lain_ket'], 0, 150) : null,
+            'biaya_cash_account_id' => null,
+        ];
+
+        // Guard tenant di service (form bisa dilewati): id dari PT lain ditolak.
+        if (! empty($data['asset_id'])) {
+            $out['asset_id'] = \App\Models\Asset::withoutGlobalScopes()->where('company_id', $company->id)->whereKey($data['asset_id'])->value('id')
+                ?? throw ValidationException::withMessages(['asset_id' => 'Truk tidak ditemukan di PT ini.']);
+        }
+        if (! empty($data['driver_id'])) {
+            $out['driver_id'] = \App\Models\Employee::withoutGlobalScopes()->where('company_id', $company->id)->whereKey($data['driver_id'])->value('id')
+                ?? throw ValidationException::withMessages(['driver_id' => 'Supir tidak ditemukan di PT ini.']);
+        }
+
+        $perRit = $out['ongkos_supir_per_rit'] + $out['bm_per_rit'];
+        if ($perRit > 0 && $jumlahRit <= 0) {
+            throw ValidationException::withMessages([
+                'jumlah_rit' => 'Isi jumlah rit — ongkos supir & BM dihitung per rit.',
+            ]);
+        }
+
+        $total = round($jumlahRit * $perRit + $out['uang_makan_supir'] + $out['biaya_bbm'] + $out['biaya_portal'] + $out['biaya_lain'], 2);
+        $out['biaya_kirim_total'] = $total;
+
+        if ($total > 0) {
+            $cash = ! empty($data['biaya_cash_account_id'])
+                ? Account::withoutGlobalScopes()->where('company_id', $company->id)->find($data['biaya_cash_account_id'])
+                : (! empty($data['cash_account_id'])
+                    ? Account::withoutGlobalScopes()->where('company_id', $company->id)->find($data['cash_account_id'])
+                    : Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id));
+
+            if (! $cash || ! $cash->isPostable()) {
+                throw ValidationException::withMessages([
+                    'biaya_cash_account_id' => 'Pilih akun kas/bank (sub-akun) untuk membayar biaya pengiriman.',
+                ]);
+            }
+            $out['biaya_cash_account_id'] = $cash->id;
+        }
+
+        return $out;
+    }
+
+    /**
+     * Jurnal biaya pengiriman: Dr beban per komponen (sesuai Peran akun) /
+     * Cr Kas. Ditandai lini MATL + truk pengantar (Laba Rugi per Unit).
+     */
+    private function postDeliveryCosts(MaterialSale $sale, Company $company, ?BusinessUnit $matlUnit): void
+    {
+        if ((float) $sale->biaya_kirim_total <= 0) {
+            return;
+        }
+
+        $lines = [];
+        foreach ($sale->deliveryCostBreakdown() as $key => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+            [$label, $role, $code] = MaterialSale::DELIVERY_COSTS[$key];
+            $account = Account::findByRoleOrCode($role, $code, $company->id)
+                ?? throw ValidationException::withMessages([
+                    'biaya_kirim' => "Akun beban untuk \"{$label}\" tidak ditemukan. Beri Peran \"{$role->label()}\" di Daftar Akun.",
+                ]);
+
+            $desc = $label . ($key === 'biaya_lain' && $sale->biaya_lain_ket ? " ({$sale->biaya_lain_ket})" : '')
+                . ($key === 'ongkos_supir' || $key === 'bm'
+                    ? ' ' . rtrim(rtrim(number_format((float) $sale->jumlah_rit, 2, ',', '.'), '0'), ',') . ' rit'
+                    : '');
+
+            $lines[] = [
+                'account_id'  => $account->id,
+                'asset_id'    => $sale->asset_id,
+                'description' => "{$desc} — {$sale->sale_number}",
+                'debit'       => $amount,
+                'kredit'      => 0,
+            ];
+        }
+
+        $lines[] = [
+            'account_id'  => $sale->biaya_cash_account_id,
+            'description' => "Biaya pengiriman {$sale->sale_number}",
+            'debit'       => 0,
+            'kredit'      => (float) $sale->biaya_kirim_total,
+        ];
+
+        $date = Carbon::parse($sale->sale_date);
+        $journal = $this->journalService->createEntryWithLines(
+            company:          $company,
+            date:             $date,
+            entryDataFactory: fn (string $entryNumber): array => [
+                'company_id'       => $company->id,
+                'entry_number'     => $entryNumber,
+                'entry_date'       => $date,
+                'document_number'  => 'KIRIM-' . $sale->sale_number,
+                'document_type'    => 'bkk',
+                'source_type'      => $sale->getMorphClass(),
+                'source_id'        => $sale->id,
+                'business_unit_id' => optional($matlUnit)->id,
+                'description'      => "Biaya pengiriman {$sale->material->name} ke {$sale->client->name}",
+                'period_year'      => $date->year,
+                'period_month'     => $date->month,
+                'status'           => 'posted',
+                'created_by'       => Auth::id() ?? $sale->created_by,
+                'posted_by'        => Auth::id() ?? $sale->created_by,
+                'posted_at'        => now(),
+                'total_amount'     => (float) $sale->biaya_kirim_total,
+            ],
+            linesFactory: fn () => $lines,
+        );
+
+        $sale->update(['biaya_journal_id' => $journal->id]);
     }
 
     /**
@@ -195,7 +340,7 @@ class MaterialSaleService
                 'document_type'    => 'bkm',
                 'business_unit_id' => optional($matlUnit)->id,
                 'description'      => 'Penjualan tunai ' . $sale->material->name
-                    . ' ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
+                    . ' ' . $sale->quantityLabel()
                     . ' — ' . $sale->client->name,
                 'period_year'      => $saleDate->year,
                 'period_month'     => $saleDate->month,
@@ -238,8 +383,9 @@ class MaterialSaleService
             'client_id'        => $sale->client_id,
             'business_unit_id' => optional($matlUnit)->id,
             'description'      => $sale->material->name
-                . ' ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
+                . ' ' . $sale->quantityLabel()
                 . ' @ ' . 'Rp ' . number_format($sale->harga_satuan, 0, ',', '.')
+                . ($sale->satuan_jual === 'rit' ? '/rit' : '')
                 . ' (' . $sale->sale_number . ')',
             'amount'           => $sale->total,
             'paid_amount'      => 0,
@@ -344,9 +490,16 @@ class MaterialSaleService
             $accKredit = Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
         }
 
+        // Dulu: Log::warning lalu return — penjualan & pendapatan tercatat, tapi
+        // HPP tidak dijurnal DAN stok tidak berkurang (blok update stok ada di
+        // bawah). Stok & persediaan jadi lebih besar dari kenyataan tanpa ada
+        // yang tahu. Sekarang ditolak (dalam transaksi → seluruh penjualan batal).
         if (! $accHpp || ! $accKredit) {
-            Log::warning("MaterialSaleService::postCogs: akun HPP (551300) atau credit account tidak ditemukan/postable untuk company {$company->id}. Skip HPP {$sale->sale_number}.");
-            return;
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'material_id' => 'Akun HPP Material atau Persediaan Material tidak ditemukan/postable. '
+                    . 'Beri Peran "' . \App\Enums\AccountRole::CogsMaterial->label() . '" dan "'
+                    . \App\Enums\AccountRole::InventoryMaterial->label() . '" di Daftar Akun, lalu ulangi.',
+            ]);
         }
 
         $saleDate = Carbon::parse($sale->sale_date);
@@ -361,6 +514,10 @@ class MaterialSaleService
                 'entry_date'       => $saleDate,
                 'document_number'  => 'HPP-' . $sale->sale_number,
                 'document_type'    => 'jual_beli',
+                // Link struktural: void invoice penjualan membalik jurnal HPP ini
+                // (InvoiceObserver::detachMaterialSale).
+                'source_type'      => $sale->getMorphClass(),
+                'source_id'        => $sale->id,
                 'business_unit_id' => optional($matlUnit)->id,
                 'description'      => 'HPP penjualan material ' . $sale->material->name
                     . ' ' . rtrim(rtrim((string) $sale->volume, '0'), '.') . ' ' . $sale->material->satuan
@@ -390,6 +547,9 @@ class MaterialSaleService
                 ],
             ],
         );
+
+        // HPP per penjualan — dasar laporan margin.
+        $sale->update(['hpp_total' => $totalHpp]);
 
         // BIZ-01: Update stock + record movement OUT (hanya kalau pakai MAC).
         // Legacy sale (harga_pokok statis) tidak update stock karena tidak

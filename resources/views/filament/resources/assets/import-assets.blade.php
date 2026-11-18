@@ -49,6 +49,7 @@
                             <th>Nopol</th>
                             <th>Tgl Beli</th>
                             <th class="text-right">Harga Beli</th>
+                            <th class="text-right">Akumulasi Awal</th>
                             <th>Keterangan</th>
                         </tr>
                     </thead>
@@ -83,6 +84,12 @@
                                     @endif
                                 </td>
                                 <td class="text-right mono">{{ $fmt($r['price']) ?? '–' }}</td>
+                                <td class="text-right mono">
+                                    {{ $fmt($r['akumulasi_awal'] ?? 0) ?? '–' }}
+                                    @if (($r['akumulasi_awal'] ?? 0) > 0 && $r['price'] && $r['akumulasi_awal'] >= $r['price'])
+                                        <div class="muted text-xs">sudah habis disusutkan</div>
+                                    @endif
+                                </td>
                                 <td>
                                     @if ($r['skip'])
                                         <span class="report-badge">Dilewati: {{ $r['skip'] }}</span>

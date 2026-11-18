@@ -60,6 +60,20 @@ class Invoice extends Model
 
     protected static function booted(): void
     {
+        // Rupiah utuh di DATABASE juga. Cast 'integer' hanya berlaku saat MEMBACA
+        // (dan memotong, bukan membulatkan), sedangkan nilai bersen dari termin %,
+        // tagihan per M³ atau ½ hari tetap tersimpan apa adanya. Akibatnya jurnal
+        // memakai 411.481 tapi laporan piutang membaca 411.481,18 → sisa Rp 0,18
+        // yang tidak pernah lunas. Bulatkan sekali di sini, untuk semua sumber.
+        static::saving(function (Invoice $invoice) {
+            foreach (['amount', 'paid_amount'] as $field) {
+                $raw = $invoice->getAttributes()[$field] ?? null;
+                if ($raw !== null) {
+                    $invoice->attributes[$field] = (int) round((float) $raw);
+                }
+            }
+        });
+
         // Proteksi hapus: hanya draft atau void yang boleh dihapus,
         // dan tidak boleh ada payment terkait.
         static::deleting(function (Invoice $invoice) {

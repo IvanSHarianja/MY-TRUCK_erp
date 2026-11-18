@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\CoaTemplateController;
+use App\Http\Controllers\GeneralLedgerExportController;
+use App\Http\Controllers\MaterialMarginExportController;
 use App\Http\Controllers\PanduanController;
 use App\Http\Controllers\PdfController;
 use App\Http\Controllers\ReceivableExportController;
@@ -51,6 +53,7 @@ Route::middleware(['web', 'auth', 'pdf.tenant'])->prefix('pdf')->name('pdf.')->g
     // Laporan Keuangan per tenant (guard via {tenant:slug})
     Route::prefix('{tenant:slug}')->group(function () {
         Route::get('/trial-balance', [PdfController::class, 'trialBalance'])->name('trial-balance');
+        Route::get('/general-ledger', [PdfController::class, 'generalLedger'])->name('general-ledger');
         Route::get('/income-statement', [PdfController::class, 'incomeStatement'])->name('income-statement');
         Route::get('/income-statement-matrix', [PdfController::class, 'incomeStatementMatrix'])->name('income-statement-matrix');
         Route::get('/income-statement-by-asset', [PdfController::class, 'incomeStatementByAsset'])->name('income-statement-by-asset');
@@ -72,6 +75,16 @@ Route::middleware(['web', 'auth', 'throttle:5,1'])
     ->get('/export/{tenant:slug}/sop/{file}.xlsx', SopExportController::class)
     ->whereIn('file', array_column(\App\Services\Export\SopFile::cases(), 'value'))
     ->name('export.sop');
+
+/** Excel Margin Penjualan Material (izin dicek di controller). */
+Route::middleware(['web', 'auth', 'throttle:20,1'])
+    ->get('/export/{tenant:slug}/margin-material.xlsx', MaterialMarginExportController::class)
+    ->name('export.margin-material');
+
+/** Excel Buku Besar (izin Lihat Laporan dicek di controller). */
+Route::middleware(['web', 'auth', 'throttle:20,1'])
+    ->get('/export/{tenant:slug}/buku-besar.xlsx', GeneralLedgerExportController::class)
+    ->name('export.buku-besar');
 
 /** Excel Laporan Tagihan & Piutang (izin dicek di controller). */
 Route::middleware(['web', 'auth', 'throttle:20,1'])

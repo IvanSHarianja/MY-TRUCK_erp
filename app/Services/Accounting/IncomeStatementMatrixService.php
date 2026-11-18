@@ -43,7 +43,7 @@ class IncomeStatementMatrixService
             // Exclude pembalik: jurnal asli sudah void (tidak counted). Include
             // pembalik akan menyebabkan angka terbalik. Pembalik tetap tersimpan
             // sebagai audit trail di buku besar.
-            ->where('je.document_type', '!=', 'pembalik')
+            ->whereNotIn('je.document_type', ['pembalik', 'penutup'])   // penutup: lihat TrialBalanceService
             // BUG-16: L/R hanya periode berjalan, bukan kumulatif sejak inception
             ->where('je.period_year', $year)
             ->when($month !== null, fn ($q) => $q->where('je.period_month', '<=', $month))

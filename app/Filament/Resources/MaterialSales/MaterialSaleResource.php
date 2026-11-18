@@ -5,6 +5,7 @@ namespace App\Filament\Resources\MaterialSales;
 use App\Filament\Resources\MaterialSales\Pages\CreateMaterialSale;
 use App\Filament\Resources\MaterialSales\Pages\EditMaterialSale;
 use App\Filament\Resources\MaterialSales\Pages\ListMaterialSales;
+use App\Filament\Resources\MaterialSales\Pages\MaterialMarginReport;
 use App\Filament\Resources\MaterialSales\Schemas\MaterialSaleForm;
 use App\Filament\Resources\MaterialSales\Tables\MaterialSalesTable;
 use App\Models\MaterialSale;
@@ -47,6 +48,7 @@ class MaterialSaleResource extends Resource
         return [
             'index'  => ListMaterialSales::route('/'),
             'create' => CreateMaterialSale::route('/create'),
+            'margin' => MaterialMarginReport::route('/margin'),
             'edit'   => EditMaterialSale::route('/{record}/edit'),
         ];
     }

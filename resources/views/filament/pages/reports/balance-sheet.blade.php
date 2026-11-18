@@ -118,6 +118,20 @@
                                     <td class="text-right mono {{ $neg($row->nilai) }}">{{ $fmt($row->nilai) }}</td>
                                 </tr>
                             @endforeach
+                            @if (($labaTahunLalu ?? 0) != 0)
+                                <tr>
+                                    <td></td>
+                                    <td class="muted">
+                                        <em>Laba/Rugi Tahun Lalu — belum ditutup buku</em>
+                                        @if (! empty($tahunBelumDitutup))
+                                            <div class="report-badge report-badge-warning" style="margin-top:4px;">
+                                                Tahun {{ implode(', ', $tahunBelumDitutup) }} belum ditutup — buka menu Tutup Buku
+                                            </div>
+                                        @endif
+                                    </td>
+                                    <td class="text-right mono {{ $neg($labaTahunLalu) }}">{{ $fmt($labaTahunLalu) }}</td>
+                                </tr>
+                            @endif
                             <tr>
                                 <td></td>
                                 <td class="muted"><em>Laba/Rugi Tahun Berjalan (dari L/R)</em></td>

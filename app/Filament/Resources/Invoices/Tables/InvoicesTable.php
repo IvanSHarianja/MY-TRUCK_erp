@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Invoices\Tables;
 
+use App\Enums\Permission;
 use App\Models\Account;
 use App\Models\Invoice;
 use App\Services\Accounting\InvoiceService;
@@ -122,6 +123,7 @@ class InvoicesTable
                     ->label('Terbitkan')
                     ->icon(Heroicon::CheckCircle)
                     ->color('success')
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::InvoiceCreate) ?? false)
                     ->visible(fn (Invoice $r): bool => $r->isDraft())
                     ->requiresConfirmation()
                     ->modalHeading('Terbitkan Invoice')
@@ -143,6 +145,7 @@ class InvoicesTable
                     ->label('Terima Pembayaran')
                     ->icon(Heroicon::Banknotes)
                     ->color('info')
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::PaymentManage) ?? false)
                     ->visible(fn (Invoice $r): bool => $r->canReceivePayment())
                     ->schema([
                         DatePicker::make('payment_date')

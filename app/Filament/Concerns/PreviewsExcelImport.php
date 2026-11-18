@@ -101,24 +101,33 @@ trait PreviewsExcelImport
         }
     }
 
+    /**
+     * `storedFile` adalah properti Livewire publik — browser bisa mengubahnya.
+     * Satu-satunya bentuk yang diterima: "<folder import>/<nama acak>.xlsx".
+     * Tanpa garis miring/titik ganda, jadi "../" tidak mungkin lolos.
+     */
+    private function isOwnImportFile(?string $file): bool
+    {
+        $dir = preg_quote($this->importDirectory(), '#');
+
+        return $file !== null && (bool) preg_match('#^' . $dir . '/[A-Za-z0-9_-]+\.(xlsx|xls|csv)$#', $file);
+    }
+
     /** Path absolut file pratinjau — hanya file di folder import halaman ini. */
     protected function storedPath(): ?string
     {
-        $file = $this->storedFile;
-        $dir  = preg_quote($this->importDirectory(), '#');
-
-        if ($file === null
-            || ! preg_match('#^' . $dir . '/[A-Za-z0-9_-]+\.(xlsx|xls|csv)$#', $file)
-            || ! Storage::disk('local')->exists($file)) {
+        if (! $this->isOwnImportFile($this->storedFile) || ! Storage::disk('local')->exists($this->storedFile)) {
             return null;
         }
 
-        return Storage::disk('local')->path($file);
+        return Storage::disk('local')->path($this->storedFile);
     }
 
     protected function discardFile(): void
     {
-        if ($this->storedFile !== null && str_starts_with($this->storedFile, $this->importDirectory() . '/')) {
+        // Validasi SAMA ketatnya dengan storedPath(): dulu cukup str_starts_with,
+        // sehingga "asset-imports/../backup/x.xlsx" bisa menghapus file lain.
+        if ($this->isOwnImportFile($this->storedFile)) {
             Storage::disk('local')->delete($this->storedFile);
         }
         $this->storedFile = null;

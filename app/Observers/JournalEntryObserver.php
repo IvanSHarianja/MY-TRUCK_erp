@@ -57,7 +57,9 @@ class JournalEntryObserver
         DB::transaction(function () use ($entry) {
             $docNum = (string) $entry->document_number;
 
-            if (str_starts_with($docNum, 'DP-')) {
+            if (str_starts_with($docNum, 'DPPOT-')) {
+                $this->guardDpDeductionVoid($entry);
+            } elseif (str_starts_with($docNum, 'DP-')) {
                 $this->rollbackProjectDp($entry);
             } elseif (str_starts_with($docNum, 'BBK-RL-')) {
                 $this->cascadeLogCostVoid($entry, RentalLog::class);
@@ -82,6 +84,28 @@ class JournalEntryObserver
     }
 
     /**
+     * Jurnal pemotongan DP hanya boleh batal bersama invoice terminnya
+     * (InvoiceObserver::rollbackProjectTermin). Void manual → invoice tetap
+     * bersih tapi pendapatan dari DP hilang, Uang Muka kembali penuh.
+     */
+    private function guardDpDeductionVoid(JournalEntry $entry): void
+    {
+        if (! $entry->sourceIs(\App\Models\ProjectTermin::class)) {
+            return;     // jurnal manual ber-No. Bukti DPPOT- — bukan milik termin
+        }
+
+        $termin = \App\Models\ProjectTermin::withoutGlobalScopes()->find($entry->source_id);
+        $invoiceActive = $termin?->invoice_id
+            && \App\Models\Invoice::withoutGlobalScopes()->whereKey($termin->invoice_id)->where('status', '!=', 'void')->exists();
+
+        if ($invoiceActive) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'status' => "Jurnal pemotongan DP termin {$termin->termin_number} hanya bisa dibatalkan dengan me-void invoice terminnya.",
+            ]);
+        }
+    }
+
+    /**
      * Kurangi Project.dp_diterima berdasar total_amount jurnal void.
      * Project diambil dari source jurnal (diisi ProjectService::terimaDP),
      * bukan dari teks "DP-{project_number}" — jurnal manual tidak punya source.
@@ -103,6 +127,17 @@ class JournalEntryObserver
         }
 
         $newDp = max(0, (float) $project->dp_diterima - (float) $entry->total_amount);
+
+        // DP yang sudah dipotongkan ke termin tidak bisa "dibatalkan" — Uang Muka
+        // akan minus. Void dulu invoice termin terkait.
+        if ($newDp + 0.005 < (float) $project->dp_dipotong) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'status' => sprintf(
+                    'DP ini sudah dipotongkan ke termin (Rp %s). Void dulu invoice termin terkait sebelum membatalkan DP.',
+                    number_format((float) $project->dp_dipotong, 0, ',', '.'),
+                ),
+            ]);
+        }
 
         DB::table('projects')
             ->where('id', $project->id)

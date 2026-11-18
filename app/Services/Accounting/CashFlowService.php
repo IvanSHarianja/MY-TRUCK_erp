@@ -42,15 +42,27 @@ class CashFlowService
             return $this->emptyReport();
         }
 
-        // Saldo awal = sum dari jurnal dengan document_type = 'saldo_awal' di akun kas
+        // PERIODE LAPORAN (keputusan 2026-11-17): bulan dipilih → bulan itu saja;
+        // tanpa bulan → setahun penuh. Dulu arus kas dihitung kumulatif sejak awal
+        // (kas masuk tahun lalu muncul di laporan tahun ini) dan saldo awal
+        // mengambil SEMUA jurnal saldo_awal tanpa batas tanggal.
+        [$startKey, $endKey] = self::periodKeys($year, $month);
+
+        // Saldo awal = posisi kas sebelum periode (semua jurnal, termasuk saldo_awal)
+        //            + jurnal saldo_awal yang tanggalnya di dalam periode.
+        // Void: jurnal asli status 'void' & pembaliknya sama-sama tidak dihitung —
+        // aturan yang sama dengan Neraca Saldo, jadi saldo akhir = saldo kas TB.
         $saldoAwal = (float) DB::table('journal_entry_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
-            // Pembalik excluded biar tidak double-count void; kalau saldo_awal
-            // di-void, pembalik-nya membalikkan ke posisi netral asli.
-            ->where('je.document_type', 'saldo_awal')
+            ->where('je.document_type', '!=', 'pembalik')
             ->whereIn('jl.account_id', $kasAccountIds)
+            ->where(function ($q) use ($startKey, $endKey) {
+                $q->whereRaw('(je.period_year * 100 + je.period_month) < ?', [$startKey])
+                  ->orWhere(fn ($q2) => $q2->where('je.document_type', 'saldo_awal')
+                      ->whereRaw('(je.period_year * 100 + je.period_month) <= ?', [$endKey]));
+            })
             ->select(DB::raw('COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.kredit), 0) as net'))
             ->value('net');
 
@@ -73,19 +85,18 @@ class CashFlowService
             ->where('je.document_type', '!=', 'saldo_awal')
             // Exclude pembalik supaya angka arus kas tidak terbalik dari void.
             ->where('je.document_type', '!=', 'pembalik')
-            ->where('je.period_year', '<=', $year)
-            ->when($month !== null, function ($q) use ($year, $month) {
-                $q->where(function ($q2) use ($year, $month) {
-                    $q2->where('je.period_year', '<', $year)
-                       ->orWhere(function ($q3) use ($year, $month) {
-                           $q3->where('je.period_year', $year)
-                              ->where('je.period_month', '<=', $month);
-                       });
-                });
-            })
+            ->whereRaw('(je.period_year * 100 + je.period_month) BETWEEN ? AND ?', [$startKey, $endKey])
             ->whereIn('jl.account_id', $kasAccountIds)
             ->select('je.id', 'jl.debit', 'jl.kredit')
             ->get();
+
+        // Kategori akun lawan semua jurnal sekaligus (dulu 1 query per baris kas).
+        $lawanByEntry = DB::table('journal_entry_lines as jl')
+            ->join('accounts as a', 'a.id', '=', 'jl.account_id')
+            ->whereIn('jl.journal_entry_id', $journalsWithKas->pluck('id')->unique()->all())
+            ->whereNotIn('jl.account_id', $kasAccountIds)
+            ->get(['jl.journal_entry_id', 'a.cash_flow_category'])
+            ->groupBy('journal_entry_id');
 
         foreach ($journalsWithKas as $row) {
             $kasMasuk  = (float) $row->debit;
@@ -95,12 +106,8 @@ class CashFlowService
                 continue;
             }
 
-            // Lihat lawan akun di entry ini: ambil semua line non-kas
-            $lawanCategories = DB::table('journal_entry_lines as jl')
-                ->join('accounts as a', 'a.id', '=', 'jl.account_id')
-                ->where('jl.journal_entry_id', $row->id)
-                ->whereNotIn('jl.account_id', $kasAccountIds)
-                ->pluck('a.cash_flow_category');
+            // Lihat lawan akun di entry ini: semua line non-kas
+            $lawanCategories = collect($lawanByEntry->get($row->id, []))->pluck('cash_flow_category');
 
             // BUG-21: Kalau tidak ada lawan non-kas → jurnal ini transfer
             // antar akun kas (BCA→Mandiri, dll). Skip supaya tidak dobel-count
@@ -146,6 +153,19 @@ class CashFlowService
             'kenaikanBersih',    'saldoAkhir',
             'posisiKas',
         );
+    }
+
+    /**
+     * Batas periode laporan kas sebagai kunci YYYYMM: bulan dipilih → bulan itu,
+     * tanpa bulan → Januari–Desember tahun itu. Dipakai juga oleh Posisi Kas & LAK.
+     *
+     * @return array{0: int, 1: int}
+     */
+    public static function periodKeys(int $year, ?int $month): array
+    {
+        return $month !== null
+            ? [$year * 100 + $month, $year * 100 + $month]
+            : [$year * 100 + 1, $year * 100 + 12];
     }
 
     public function getSaldoAkhir(int $companyId, int $year, ?int $month = null): float

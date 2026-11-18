@@ -91,6 +91,12 @@
                 <td class="text-right">{{ $fmt($row->nilai) }}</td>
             </tr>
         @endforeach
+        @if (($labaTahunLalu ?? 0) != 0)
+            <tr>
+                <td class="indent">Laba Tahun Lalu (belum ditutup buku{{ ! empty($tahunBelumDitutup) ? ': ' . implode(', ', $tahunBelumDitutup) : '' }})</td>
+                <td class="text-right">{{ $fmt($labaTahunLalu) }}</td>
+            </tr>
+        @endif
         <tr>
             <td class="indent">Laba Berjalan</td>
             <td class="text-right">{{ $fmt($labaBerjalan) }}</td>

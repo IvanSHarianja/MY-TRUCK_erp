@@ -38,7 +38,8 @@ class ContractChangeService
             'started_at'          => ['Tanggal Mulai', 'date'],
             'status'              => ['Status', 'text'],
             'route_description'   => ['Rute / Uraian', 'text'],
-            'tarif_per_rit'       => ['Tarif per Rit', 'money'],
+            'satuan_tarif'        => ['Satuan Tarif', 'text'],
+            'tarif_per_rit'       => ['Tarif (per satuan)', 'money'],
             'tipe_kontrak'        => ['Tipe Kontrak', 'text'],
             'bbm_liter_per_rit'   => ['BBM per Rit (liter)', 'number'],
             'harga_bbm_per_liter' => ['Harga BBM per Liter', 'money'],
@@ -68,6 +69,7 @@ class ContractChangeService
     private const LABELS = [
         'aktif' => 'Aktif', 'selesai' => 'Selesai', 'batal' => 'Batal',
         'all_in' => 'All In', 'semi' => 'Semi', 'alat_saja' => 'Alat Saja',
+        'per_rit' => 'Per Rit', 'per_m3' => 'Per M³', 'per_ton' => 'Per Ton', 'per_hari' => 'Per Hari',
     ];
 
     public function canApprove(?User $user, Company $company): bool
@@ -229,7 +231,9 @@ class ContractChangeService
      */
     public function describe(ContractChangeRequest $request): array
     {
-        $fields = self::FIELDS[$request->contract_type] ?? [];
+        $class    = $request->contract_type;
+        $contract = class_exists($class) ? $class::withoutGlobalScopes()->find($request->contract_id) : null;
+        $fields   = $contract ? $this->fieldsFor($contract) : (self::FIELDS[$class] ?? []);
 
         return collect($request->changes)->map(function ($c, $field) use ($fields) {
             [$label, $kind] = $fields[$field] ?? [$field, 'text'];
@@ -265,8 +269,15 @@ class ContractChangeService
 
     private function fieldsFor(Model $contract): array
     {
-        return self::FIELDS[$contract->getMorphClass()]
+        $fields = self::FIELDS[$contract->getMorphClass()]
             ?? throw new \InvalidArgumentException('Model ' . $contract::class . ' bukan kontrak yang didukung.');
+
+        // Label tarif mengikuti satuan kontrak: "Tarif per Rit" / "Tarif per M³" / "Tarif per hari".
+        if ($contract instanceof ArmadaContract) {
+            $fields['tarif_per_rit'][0] = 'Tarif per ' . ($contract->satuan() === 'per_rit' ? 'Rit' : $contract->unitLabel());
+        }
+
+        return $fields;
     }
 
     /** Samakan bentuk nilai form vs database supaya "250000" == 250000.00. */

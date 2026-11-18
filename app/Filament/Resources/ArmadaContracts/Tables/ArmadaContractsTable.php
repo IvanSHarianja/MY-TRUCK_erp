@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ArmadaContracts\Tables;
 
+use App\Enums\Permission;
 use App\Models\ArmadaContract;
 use App\Services\Accounting\ArmadaContractService;
 use Filament\Actions\Action;
@@ -18,6 +19,7 @@ class ArmadaContractsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn ($query) => $query->withUnbilled())
             ->defaultSort('contract_number', 'desc')
             ->columns([
                 TextColumn::make('contract_number')
@@ -37,23 +39,27 @@ class ArmadaContractsTable
                     ->tooltip(fn ($record) => $record->route_description),
 
                 TextColumn::make('tarif_per_rit')
-                    ->label('Tarif/Rit')
-                    ->money('IDR'),
+                    ->label('Tarif')
+                    ->money('IDR', 0)
+                    ->description(fn (ArmadaContract $record): string => 'per ' . $record->unitLabel()),
 
                 TextColumn::make('total_rit')
                     ->label('Total Rit')
                     ->getStateUsing(fn ($record) => $record->total_rit)
-                    ->alignEnd(),
+                    ->alignEnd()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 TextColumn::make('billed_rit')
-                    ->label('Sudah Ditagih')
-                    ->alignEnd(),
+                    ->label('Rit Ditagih')
+                    ->alignEnd()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
-                TextColumn::make('unbilled_rit')
+                // "120 M³ + 1 mobilisasi alat" — mengikuti satuan kontrak.
+                TextColumn::make('unbilled_label')
                     ->label('Belum Ditagih')
-                    ->getStateUsing(fn ($record) => $record->unbilled_rit)
+                    ->getStateUsing(fn (ArmadaContract $record): string => $record->unbilledLabel() ?: 'Lunas tagih')
                     ->badge()
-                    ->color(fn ($state) => $state > 0 ? 'warning' : 'success'),
+                    ->color(fn (ArmadaContract $record) => $record->hasUnbilled() ? 'warning' : 'success'),
 
                 TextColumn::make('nilai_siap_tagih')
                     ->label('Nilai Siap Tagih')
@@ -84,7 +90,9 @@ class ArmadaContractsTable
                     ->label('Tagih')
                     ->icon(Heroicon::Banknotes)
                     ->color('warning')
-                    ->visible(fn (ArmadaContract $r): bool => $r->isAktif() && $r->unbilled_rit > 0)
+                    // authorize(): sembunyikan DAN tolak eksekusi di server (Viewer dulu bisa menagih).
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::InvoiceCreate) ?? false)
+                    ->visible(fn (ArmadaContract $r): bool => $r->isAktif() && $r->hasUnbilled())
                     ->schema([
                         DatePicker::make('invoice_date')
                             ->label('Tanggal Invoice')
@@ -92,7 +100,7 @@ class ArmadaContractsTable
                             ->default(now())
                             ->native(false),
                     ])
-                    ->modalHeading(fn (ArmadaContract $r) => "Tagih {$r->unbilled_rit} rit — " . 'Rp ' . number_format($r->nilai_siap_tagih, 0, ',', '.'))
+                    ->modalHeading(fn (ArmadaContract $r) => "Tagih {$r->unbilledLabel()} — " . 'Rp ' . number_format($r->nilai_siap_tagih, 0, ',', '.'))
                     ->modalDescription('Invoice akan otomatis dibuat & diterbitkan (jurnal piutang langsung di-post).')
                     ->action(function (array $data, ArmadaContract $record) {
                         try {
@@ -118,10 +126,11 @@ class ArmadaContractsTable
                     ->label('Tutup Kontrak')
                     ->icon(Heroicon::CheckCircle)
                     ->color('gray')
-                    ->visible(fn (ArmadaContract $r): bool => $r->isAktif() && $r->unbilled_rit === 0)
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::OperationalManage) ?? false)
+                    ->visible(fn (ArmadaContract $r): bool => $r->isAktif() && ! $r->hasUnbilled())
                     ->requiresConfirmation()
                     ->modalHeading('Tutup kontrak?')
-                    ->modalDescription('Setelah ditutup, tidak bisa input rit baru di kontrak ini.')
+                    ->modalDescription('Setelah ditutup, tidak bisa input log harian atau mobilisasi alat baru di kontrak ini.')
                     ->action(function (ArmadaContract $record) {
                         try {
                             app(ArmadaContractService::class)->selesai($record);

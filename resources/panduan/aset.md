@@ -33,7 +33,16 @@ Klik **Import Excel** di halaman Armada & Alat Berat, unggah daftar aset perusah
 
 Isi **umur ekonomis** sesuai metode (bulan / jam / rit / hari), **harga beli**, dan **nilai sisa**. Penyusutan berhenti otomatis saat nilai buku mencapai nilai sisa.
 
-> **Metode penyusutan terkunci** setelah aset punya jurnal penyusutan. Untuk mengubahnya, jurnal penyusutan terkait harus di-void terlebih dahulu.
+> **Data penentu penyusutan terkunci** setelah aset punya jurnal penyusutan: metode, jenis aset, harga beli, nilai sisa, tanggal beli, umur ekonomis, dan akumulasi awal. Untuk mengubahnya, jurnal penyusutan terkait harus di-void terlebih dahulu.
+
+### Aset lama: Akumulasi Penyusutan Awal
+
+Untuk aset yang dibeli **sebelum** memakai MY-TRUCK, isi **Akumulasi Penyusutan Awal** — total penyusutan sampai akhir bulan lalu. Klik ikon kalkulator untuk perkiraan garis lurus otomatis dari tanggal beli & umur ekonomis.
+
+- Tanpa ini, aset lama tampil dengan nilai buku penuh: truk 2015 berumur 8 tahun tidak pernah disusutkan (umurnya sudah habis) tetapi nilainya tetap 100%.
+- Dengan akumulasi awal, MY-TRUCK hanya menyusutkan **sisa** nilainya, dan aset yang umurnya habis bernilai buku 0.
+- Import Excel mengisi perkiraan ini otomatis.
+- Saldo di buku besar tetap dicatat sekali lewat jurnal **Saldo Awal**: Dr Aset Tetap (total harga beli) / Cr Akumulasi Penyusutan (total akumulasi awal) / Cr Modal (selisihnya).
 
 ### Target jam bulanan
 
@@ -48,3 +57,5 @@ berkurang dan nilainya dihitung dari harga pokok rata-rata (MAC). Lihat
 [Material: Stok, Pembelian & Penjualan](#material).
 
 Seluruh biaya (jasa + sparepart) otomatis dijurnal sebagai beban dan tercatat di laporan **Biaya per Unit**.
+
+Kolom **Bengkel / Vendor** di tabel riwayat menampilkan nama vendor yang dipilih (beserta teleponnya); servis tanpa vendor ditulis *Tanpa vendor*. Gunakan filter **Bengkel / Vendor** untuk melihat semua servis di satu bengkel. Nama vendor juga ikut di keterangan jurnal pembayaran, sehingga terbaca di **Buku Besar** akun kas.

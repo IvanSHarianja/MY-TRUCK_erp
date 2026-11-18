@@ -40,6 +40,8 @@ class AssetForm
 
                 Select::make('type')
                     ->label('Jenis Aset')
+                    ->disabled(fn (?Asset $record): bool => self::locked($record))
+                    ->dehydrated(true)
                     ->options([
                         'dump_truck'            => 'Dump Truck',
                         'excavator'             => 'Excavator',
@@ -58,20 +60,54 @@ class AssetForm
 
                 DatePicker::make('purchase_date')
                     ->label('Tanggal Pembelian')
+                    ->disabled(fn (?Asset $record): bool => self::locked($record))
+                    ->dehydrated(true)
                     ->required()
                     ->native(false),
 
                 TextInput::make('purchase_price')
                     ->label('Harga Beli')
+                    ->disabled(fn (?Asset $record): bool => self::locked($record))
+                    ->dehydrated(true)
                     ->default(0)
                     ->rupiah()
                     ->required(),
 
                 TextInput::make('salvage_value')
                     ->label('Nilai Residu')
+                    ->disabled(fn (?Asset $record): bool => self::locked($record))
+                    ->dehydrated(true)
                     ->default(0)
                     ->rupiah()
                     ->required(),
+
+                // Aset yang dibeli sebelum memakai MY-TRUCK: penyusutan yang SUDAH
+                // terjadi. Tanpa ini aset lama nilai bukunya tetap 100%.
+                TextInput::make('akumulasi_awal')
+                    ->label('Akumulasi Penyusutan Awal')
+                    ->disabled(fn (?Asset $record): bool => self::locked($record))
+                    ->dehydrated(true)
+                    ->default(0)
+                    ->rupiah()
+                    ->helperText('Untuk aset yang dibeli sebelum memakai MY-TRUCK: total penyusutan sampai akhir bulan lalu. '
+                        . 'Isi 0 untuk aset baru. Saldo di buku besar dicatat lewat jurnal Saldo Awal.')
+                    ->suffixAction(
+                        \Filament\Actions\Action::make('hitungAkumulasi')
+                            ->icon(\Filament\Support\Icons\Heroicon::OutlinedCalculator)
+                            ->tooltip('Hitung perkiraan garis lurus dari tanggal beli s/d akhir bulan lalu')
+                            ->action(function (Get $get, \Filament\Schemas\Components\Utilities\Set $set) {
+                                // Parser yang sama dengan import (tahan "100.000.000" & "100000000.00").
+                                $money = fn ($v) => app(\App\Services\Import\AssetImportService::class)->money($v) ?? 0;
+                                $estimate = (new Asset([
+                                    'purchase_date'      => $get('purchase_date'),
+                                    'purchase_price'     => $money($get('purchase_price')),
+                                    'salvage_value'      => $money($get('salvage_value')),
+                                    'useful_life_months' => (int) $get('useful_life_months'),
+                                ]))->estimatedAkumulasiAwal();
+                                $set('akumulasi_awal', $estimate);
+                            })
+                            ->disabled(fn (?Asset $record): bool => (bool) $record?->hasPostedDepreciationJournal()),
+                    ),
 
                 TextInput::make('monthly_target_hours')
                     ->label('Target Jam per Bulan (Dashboard)')
@@ -107,6 +143,8 @@ class AssetForm
 
                 TextInput::make('useful_life_months')
                     ->label('Umur Ekonomis')
+                    ->disabled(fn (?Asset $record): bool => self::locked($record))
+                    ->dehydrated(true)
                     ->numeric()
                     ->default(60)
                     ->suffix('bulan')
@@ -199,5 +237,20 @@ class AssetForm
                     ->rows(2)
                     ->columnSpanFull(),
             ]);
+    }
+
+    /**
+     * Field penentu besar penyusutan terkunci setelah ada jurnal penyusutan
+     * (lihat Asset::LOCKED_AFTER_DEPRECIATION) — ditampilkan terkunci di form,
+     * bukan baru ditolak saat simpan. Hasil disimpan per record (1 query).
+     */
+    private static function locked(?Asset $record): bool
+    {
+        static $cache = [];
+        if (! $record?->exists) {
+            return false;
+        }
+
+        return $cache[$record->getKey()] ??= $record->hasPostedDepreciationJournal();
     }
 }

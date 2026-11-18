@@ -120,6 +120,22 @@
             <td class="subtotal">{{ $fmt($totalPengeluaran) }}</td>
         </tr>
 
+        @if (($tidakTerpetakan['masuk'] ?? 0) != 0 || ($tidakTerpetakan['keluar'] ?? 0) != 0)
+            <tr class="section"><td colspan="4">Belum terpetakan (Peran akun lawan belum ada di format LAK) :</td></tr>
+            <tr>
+                <td class="maping">LAIN-LAIN MASUK</td>
+                <td class="desc">Kas masuk dari akun tanpa baris LAK</td>
+                <td class="detail">{{ $fmt($tidakTerpetakan['masuk']) }}</td>
+                <td class="subtotal"></td>
+            </tr>
+            <tr>
+                <td class="maping">LAIN-LAIN KELUAR</td>
+                <td class="desc">Kas keluar ke akun tanpa baris LAK</td>
+                <td class="detail">{{ $fmt($tidakTerpetakan['keluar']) }}</td>
+                <td class="subtotal"></td>
+            </tr>
+        @endif
+
         {{-- Baris kosong pemisah --}}
         <tr><td colspan="4" style="border:none; height:6px;"></td></tr>
 

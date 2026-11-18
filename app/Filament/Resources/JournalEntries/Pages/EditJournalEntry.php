@@ -67,6 +67,25 @@ class EditJournalEntry extends EditRecord
         return [];
     }
 
+    /**
+     * Penjaga di SERVER: tombol Save memang disembunyikan untuk jurnal posted/void,
+     * tapi method save() Livewire tetap bisa dipanggil langsung — tanpa ini baris,
+     * nominal & tanggal jurnal posted bisa diubah, termasuk ke periode tertutup.
+     * Jurnal posted hanya boleh dikoreksi lewat Void.
+     */
+    protected function beforeSave(): void
+    {
+        if (! $this->record->isDraft()) {
+            Notification::make()
+                ->title('Jurnal tidak bisa diubah')
+                ->body("Jurnal {$this->record->entry_number} sudah {$this->record->status}. Koreksi dengan Void lalu buat jurnal baru.")
+                ->danger()
+                ->send();
+
+            $this->halt();
+        }
+    }
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
         // Update total_amount dari sum debit

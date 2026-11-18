@@ -15,8 +15,10 @@ class ProjectTermin extends Model
         'project_id',
         'termin_number',
         'termin_pct',
-        'amount',
+        'amount',          // nilai BRUTO termin (pct × nilai kontrak)
+        'dp_potong',       // potongan DP; invoice = amount − dp_potong
         'invoice_id',
+        'dp_journal_id',
         'description',
         'created_by',
     ];
@@ -25,6 +27,7 @@ class ProjectTermin extends Model
         'termin_number' => 'integer',
         'termin_pct'    => 'decimal:2',
         'amount'        => 'decimal:2',
+        'dp_potong'     => 'decimal:2',
     ];
 
     public function project(): BelongsTo

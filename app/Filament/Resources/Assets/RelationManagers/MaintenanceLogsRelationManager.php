@@ -23,7 +23,9 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\IconColumn;
+use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\HtmlString;
@@ -75,6 +77,8 @@ class MaintenanceLogsRelationManager extends RelationManager
                             ->toArray();
                     })
                     ->searchable()
+                    // Vendor yang sudah dinonaktifkan tetap tampil namanya saat Edit.
+                    ->getOptionLabelUsing(fn ($value): ?string => ($v = Vendor::find($value)) ? "[{$v->code}] {$v->name}" : null)
                     ->placeholder('Pilih vendor (opsional)'),
 
                 TextInput::make('cost')
@@ -195,7 +199,7 @@ class MaintenanceLogsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn ($query) => $query->with('items.material'))
+            ->modifyQueryUsing(fn ($query) => $query->with(['items.material', 'vendor']))
             ->recordTitleAttribute('description')
             ->defaultSort('maintenance_date', 'desc')
             ->columns([
@@ -213,13 +217,18 @@ class MaintenanceLogsRelationManager extends RelationManager
                 TextColumn::make('description')
                     ->label('Deskripsi')
                     ->limit(40)
-                    ->tooltip(fn ($record) => $record->description),
+                    ->tooltip(fn ($record) => $record->description)
+                    ->searchable(),
 
+                // Bengkel/vendor selalu terlihat — dulu kolom terpotong 20 huruf
+                // & bisa disembunyikan, sehingga sering dikira tidak ada.
                 TextColumn::make('vendor.name')
-                    ->label('Vendor')
-                    ->placeholder('—')
-                    ->limit(20)
-                    ->toggleable(),
+                    ->label('Bengkel / Vendor')
+                    ->placeholder('Tanpa vendor')
+                    ->icon(fn (AssetMaintenanceLog $record) => $record->vendor ? Heroicon::OutlinedWrenchScrewdriver : null)
+                    ->description(fn (AssetMaintenanceLog $record): ?string => $record->vendor?->phone)
+                    ->wrap()
+                    ->searchable(),
 
                 TextColumn::make('cost')
                     ->label('Biaya Jasa')
@@ -256,6 +265,13 @@ class MaintenanceLogsRelationManager extends RelationManager
                     ->label('Jurnal')
                     ->boolean()
                     ->tooltip(fn ($record) => $record->journal_entry_id ? 'Jurnal terposting' : 'Belum ada jurnal (cost=0?)'),
+            ])
+            ->filters([
+                SelectFilter::make('vendor_id')
+                    ->label('Bengkel / Vendor')
+                    ->relationship('vendor', 'name')
+                    ->searchable()
+                    ->preload(),
             ])
             ->headerActions([
                 CreateAction::make()

@@ -91,8 +91,15 @@ class RentalContractService
                 ]);
             }
 
-            $amount = round($totalUnbilledJam * (float) $lockedContract->tarif_per_jam, 2);
             $contract = $lockedContract; // Ganti reference
+            // Setiap log ditagih dengan tarif yang terkunci saat log diinput.
+            $amount = round((float) $unbilledLogs->sum(fn ($l) => (float) $l->jam_kerja * $l->effectiveTarif($contract)), 2);
+            $rincian = $unbilledLogs
+                ->groupBy(fn ($l) => (string) $l->effectiveTarif($contract))
+                ->sortBy(fn ($g, $tarif) => (float) $tarif)   // urut angka, bukan teks
+                ->map(fn ($g, $tarif) => rtrim(rtrim(number_format((float) $g->sum('jam_kerja'), 2, ',', '.'), '0'), ',')
+                    . ' jam @ Rp ' . number_format((float) $tarif, 0, ',', '.'))
+                ->implode(' + ');
 
             $invoice = Invoice::create([
                 'company_id'       => $contract->company_id,
@@ -102,10 +109,9 @@ class RentalContractService
                 'client_id'        => $contract->client_id,
                 'business_unit_id' => optional($rentUnit)->id,
                 'description'      => sprintf(
-                    'Sewa %s — %s jam @ Rp %s (%s)',
+                    'Sewa %s — %s (%s)',
                     optional($contract->asset)->asset_code . ' ' . optional($contract->asset)->name,
-                    rtrim(rtrim(number_format($totalUnbilledJam, 2, ',', '.'), '0'), ','),
-                    number_format($contract->tarif_per_jam, 0, ',', '.'),
+                    $rincian,
                     $contract->contract_number,
                 ),
                 'amount'           => $amount,

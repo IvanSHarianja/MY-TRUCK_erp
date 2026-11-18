@@ -101,7 +101,8 @@ class MaterialInventoryRoleTest extends TestCase
 
         $this->buyAndSell($company);
 
-        $lak = app(CashFlowLakService::class)->getReport($company->id, 2026, 12);
+        // LAK per bulan = bulan itu saja (sejak 2026-11-17) — pembelian 1 Agustus.
+        $lak = app(CashFlowLakService::class)->getReport($company->id, 2026, 8);
         $pembelian = collect($lak['pengeluaran']['pengeluaran_material']['items'])->firstWhere('label', 'PEMBELIAN MATERIAL');
 
         $this->assertEquals(2_000_000, $pembelian['amount']);

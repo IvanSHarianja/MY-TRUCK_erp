@@ -115,7 +115,9 @@ trait BuildsFleetSheets
                 "S{$row}" => $l ? round((float) $l->n, 2) : null,
                 "U{$row}" => $this->money($inv->amount),
                 "V{$row}" => $inv->status === 'void' ? 'Batal' : 'Diajukan',
-                "X{$row}" => "Status invoice MY-TRUCK: {$inv->status}",
+                // Keterangan invoice memuat rincian (satuan, ongkos gendong) yang
+                // tidak punya kolom sendiri di template SOP.
+                "X{$row}" => "Status invoice MY-TRUCK: {$inv->status}. {$inv->description}",
             ];
             $row++;
         }

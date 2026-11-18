@@ -17,7 +17,7 @@ class Project extends Model
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['project_number', 'name', 'nilai_kontrak', 'progress_pct', 'tertagih_pct', 'dp_diterima', 'status'])
+            ->logOnly(['project_number', 'name', 'nilai_kontrak', 'progress_pct', 'tertagih_pct', 'dp_diterima', 'dp_dipotong', 'status'])
             ->logOnlyDirty()
             ->useLogName('project');
     }
@@ -32,6 +32,7 @@ class Project extends Model
         'progress_pct',
         'tertagih_pct',
         'dp_diterima',
+        'dp_dipotong',
         'status',
         'started_at',
         'target_end_date',
@@ -47,6 +48,7 @@ class Project extends Model
         'progress_pct'    => 'decimal:2',
         'tertagih_pct'    => 'decimal:2',
         'dp_diterima'     => 'integer',
+        'dp_dipotong'     => 'integer',
         'started_at'      => 'date',
         'target_end_date' => 'date',
         'ended_at'        => 'date',
@@ -65,6 +67,12 @@ class Project extends Model
     public function termins(): HasMany
     {
         return $this->hasMany(ProjectTermin::class)->orderBy('termin_number');
+    }
+
+    /** Pemakaian alat berat & truk sendiri per hari (biaya proyek). */
+    public function unitLogs(): HasMany
+    {
+        return $this->hasMany(ProjectUnitLog::class);
     }
 
     public function createdBy(): BelongsTo

@@ -49,6 +49,7 @@ class ProjectResource extends Resource
         return [
             ProgressUpdatesRelationManager::class,
             TerminsRelationManager::class,
+            \App\Filament\Resources\Projects\RelationManagers\UnitLogsRelationManager::class,
         ];
     }
 
@@ -57,6 +58,7 @@ class ProjectResource extends Resource
         return [
             'index'  => ListProjects::route('/'),
             'create' => CreateProject::route('/create'),
+            'margin' => \App\Filament\Resources\Projects\Pages\ProjectMarginReport::route('/margin'),
             'edit'   => EditProject::route('/{record}/edit'),
         ];
     }

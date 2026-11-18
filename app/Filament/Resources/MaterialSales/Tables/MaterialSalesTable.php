@@ -35,9 +35,8 @@ class MaterialSalesTable
                     ->searchable(),
 
                 TextColumn::make('volume')
-                    ->label('Volume')
-                    ->numeric(decimalPlaces: 2)
-                    ->suffix(fn ($record) => ' ' . optional($record->material)->satuan),
+                    ->label('Jumlah')
+                    ->state(fn ($record) => $record->quantityLabel()),
 
                 TextColumn::make('harga_satuan')
                     ->label('Harga')
@@ -49,6 +48,17 @@ class MaterialSalesTable
                     ->money('IDR')
                     ->sortable()
                     ->weight('bold'),
+
+                // Margin = total − HPP − biaya kirim (detail di Laporan Margin).
+                TextColumn::make('margin')
+                    ->label('Margin')
+                    ->state(fn ($record) => $record->margin())
+                    ->money('IDR', 0)
+                    ->color(fn ($state) => $state < 0 ? 'danger' : 'success')
+                    ->description(fn ($record) => (float) $record->biaya_kirim_total > 0
+                        ? 'kirim Rp ' . number_format((float) $record->biaya_kirim_total, 0, ',', '.')
+                        : null)
+                    ->toggleable(),
 
                 TextColumn::make('metode')
                     ->label('Metode')

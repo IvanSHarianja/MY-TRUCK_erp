@@ -140,8 +140,10 @@ class ProjectService
         //   tertagih_nilai   = nilai_kontrak × tertagih_pct / 100
         //   sisa yang bisa   = nilai_kontrak - tertagih_nilai - dp_diterima (existing)
         //   amount DP baru   ≤ sisa yang bisa
+        // DP yang sudah dipotongkan ke termin sudah termasuk dalam tertagih —
+        // hanya SISA DP yang dihitung, kalau tidak DP baru ditolak keliru.
         $tertagihNilai = round((float) $project->nilai_kontrak * (float) $project->tertagih_pct / 100, 2);
-        $sisaNilai     = round((float) $project->nilai_kontrak - $tertagihNilai - (float) $project->dp_diterima, 2);
+        $sisaNilai     = round((float) $project->nilai_kontrak - $tertagihNilai - ((float) $project->dp_diterima - (float) $project->dp_dipotong), 2);
 
         // BUG-20: epsilon +0.005 konsisten dengan tagihTermin
         if (round($amount, 2) > $sisaNilai + 0.005) {
@@ -206,7 +208,8 @@ class ProjectService
             }
 
             $tertagihNilaiLocked = round((float) $lockedProject->nilai_kontrak * (float) $lockedProject->tertagih_pct / 100, 2);
-            $sisaNilaiLocked = round((float) $lockedProject->nilai_kontrak - $tertagihNilaiLocked - (float) $lockedProject->dp_diterima, 2);
+            $sisaNilaiLocked = round((float) $lockedProject->nilai_kontrak - $tertagihNilaiLocked
+                - ((float) $lockedProject->dp_diterima - (float) $lockedProject->dp_dipotong), 2);
 
             if (round($amount, 2) > $sisaNilaiLocked) {
                 throw ValidationException::withMessages([
@@ -274,14 +277,20 @@ class ProjectService
     }
 
     /**
-     * Tagih termin proyek → bikin Invoice (Dr Piutang Cr Pendapatan Borongan).
+     * Tagih termin proyek.
      *
-     * Validasi:
-     * - termin_pct > 0
-     * - tertagih_pct + termin_pct ≤ 100
-     * - tertagih_pct + termin_pct ≤ progress_pct (tidak boleh melebihi progress fisik)
-     * - tertagih_nilai + termin_amount + dp_diterima ≤ nilai_kontrak
-     *   (total penerimaan dari klien via DP + tagihan termin tidak boleh melebihi kontrak)
+     * DP dipotong PROPORSIONAL (keputusan 2026-11-17):
+     *   bruto      = termin% × nilai kontrak               → Pendapatan
+     *   potong DP  = termin% × DP diterima (maks. sisa DP); termin yang membuat
+     *                tertagih 100% memotong SELURUH sisa DP (menuntaskan proyek
+     *                lama yang termin awalnya belum memotong DP)
+     *   invoice    = bruto − potong DP                      → Piutang
+     * Jurnal: invoice (Dr Piutang / Cr Pendapatan, bersih) + jurnal pemotongan
+     * DP (Dr Uang Muka Proyek / Cr Pendapatan, sebesar potongan).
+     *
+     * Validasi: termin_pct > 0; tertagih + termin ≤ 100; tertagih + termin ≤
+     * progress fisik. SEMUA dicek ulang setelah lock — dua klik bersamaan dulu
+     * bisa lolos bersama dan membuat tertagih 120%.
      */
     public function tagihTermin(
         Project $project,
@@ -289,57 +298,9 @@ class ProjectService
         ?CarbonInterface $invoiceDate = null,
         ?string $description = null,
     ): Invoice {
-        if (! $project->isBerjalan()) {
-            throw ValidationException::withMessages([
-                'status' => "Hanya proyek BERJALAN yang bisa ditagih (status sekarang: {$project->status}).",
-            ]);
-        }
-
         if ($terminPct <= 0 || $terminPct > 100) {
             throw ValidationException::withMessages([
                 'termin_pct' => 'Persen termin harus antara 0.01% sampai 100%.',
-            ]);
-        }
-
-        $newTertagih = (float) $project->tertagih_pct + $terminPct;
-
-        if (round($newTertagih, 2) > 100.00) {
-            throw ValidationException::withMessages([
-                'termin_pct' => "Total tertagih akan menjadi {$newTertagih}% — melebihi 100% nilai kontrak.",
-            ]);
-        }
-
-        if (round($newTertagih, 2) > round((float) $project->progress_pct, 2) + 0.01) {
-            throw ValidationException::withMessages([
-                'termin_pct' => sprintf(
-                    'Termin %.2f%% + tertagih %.2f%% = %.2f%% melebihi progress fisik (%.2f%%). Update progress dulu.',
-                    $terminPct, $project->tertagih_pct, $newTertagih, $project->progress_pct,
-                ),
-            ]);
-        }
-
-        $amount = round((float) $project->nilai_kontrak * $terminPct / 100, 2);
-
-        // Validasi vs DP: total penerimaan (DP + tertagih existing + termin baru)
-        // tidak boleh melebihi nilai kontrak. Kalau DP sudah full, tertagih baru
-        // harus 0 — klien sudah bayar semua di depan.
-        $tertagihNilai = round((float) $project->nilai_kontrak * (float) $project->tertagih_pct / 100, 2);
-        $totalPenerimaan = $tertagihNilai + $amount + (float) $project->dp_diterima;
-
-        if (round($totalPenerimaan, 2) > round((float) $project->nilai_kontrak, 2) + 0.01) {
-            $sisaBisaTermin = max(0, (float) $project->nilai_kontrak - $tertagihNilai - (float) $project->dp_diterima);
-            throw ValidationException::withMessages([
-                'termin_pct' => sprintf(
-                    'Total penerimaan (DP Rp %s + tertagih Rp %s + termin baru Rp %s = Rp %s) melebihi nilai kontrak Rp %s. '
-                    . 'Sisa yang bisa ditagih via termin: Rp %s. '
-                    . 'Kalau DP sudah full-payment, tidak perlu tagih termin lagi.',
-                    number_format((float) $project->dp_diterima, 0, ',', '.'),
-                    number_format($tertagihNilai, 0, ',', '.'),
-                    number_format($amount, 0, ',', '.'),
-                    number_format($totalPenerimaan, 0, ',', '.'),
-                    number_format((float) $project->nilai_kontrak, 0, ',', '.'),
-                    number_format($sisaBisaTermin, 0, ',', '.'),
-                ),
             ]);
         }
 
@@ -351,80 +312,181 @@ class ProjectService
             ->where('code', 'BONG')
             ->first();
 
-        return DB::transaction(function () use (
-            $project, $terminPct, $amount, $invDate, $description, $bongUnit
-        ) {
-            // BUG-10: Lock project + re-hitung nextTerminNumber di dalam tx.
-            // Cegah 2 concurrent tagih dapat termin_number sama.
-            // Unique constraint (project_id, termin_number) sebagai safeguard database.
-            $lockedProject = Project::withoutGlobalScopes()
+        return DB::transaction(function () use ($project, $terminPct, $invDate, $description, $bongUnit, $company) {
+            $locked = Project::withoutGlobalScopes()
                 ->where('id', $project->id)
                 ->lockForUpdate()
                 ->first();
 
-            if (! $lockedProject) {
+            if (! $locked) {
                 throw ValidationException::withMessages([
                     'project' => "Proyek tidak ditemukan (id: {$project->id}).",
                 ]);
             }
+            $project = $locked;
 
-            // Ambil max termin_number setelah lock — safe dari race
+            $this->assertTerminAllowed($project, $terminPct);
+
+            $gross    = round((float) $project->nilai_kontrak * $terminPct / 100, 2);
+            $dpPotong = $this->dpDeduction($project, $terminPct);
+            $net      = round($gross - $dpPotong, 2);
+
             $nextTerminNumber = (int) (ProjectTermin::withoutGlobalScopes()
                 ->where('project_id', $project->id)
                 ->max('termin_number') ?? 0) + 1;
 
-            $project = $lockedProject; // Ganti reference ke locked version
+            $rp = fn ($n) => 'Rp ' . number_format((float) $n, 0, ',', '.');
+            $invoiceDescription = sprintf(
+                'Termin %d (%s%%) — %s %s%s%s',
+                $nextTerminNumber,
+                rtrim(rtrim(number_format($terminPct, 2, ',', '.'), '0'), ','),
+                $project->project_number,
+                $project->name,
+                $dpPotong > 0 ? " — nilai termin {$rp($gross)} dikurangi uang muka {$rp($dpPotong)}" : '',
+                $description ? ' — ' . $description : '',
+            );
 
-            // 1. Bikin invoice draft
-            $invoice = Invoice::create([
-                'company_id'       => $project->company_id,
-                'invoice_number'   => 'DRAFT-' . now()->format('ymdHisu'),
-                'invoice_date'     => $invDate,
-                'due_date'         => $invDate->copy()->addDays(30),
-                'client_id'        => $project->client_id,
-                'business_unit_id' => optional($bongUnit)->id,
-                'description'      => sprintf(
-                    'Termin %d (%.2f%%) — %s %s%s',
-                    $nextTerminNumber,
-                    $terminPct,
-                    $project->project_number,
-                    $project->name,
-                    $description ? ' — ' . $description : '',
-                ),
-                'amount'           => $amount,
-                'paid_amount'      => 0,
-                'status'           => 'draft',
-                'source_type'      => 'project_termin',
-                'source_id'        => $project->id,
-                'created_by'       => Auth::id() ?? $project->created_by,
-            ]);
+            // 1. Invoice sebesar nilai BERSIH. Bila DP menutup seluruh termin
+            //    (bersih 0), tidak ada piutang — cukup jurnal pemotongan DP.
+            $invoice = null;
+            if ($net > 0.005) {
+                $invoice = Invoice::create([
+                    'company_id'       => $project->company_id,
+                    'invoice_number'   => 'DRAFT-' . now()->format('ymdHisu'),
+                    'invoice_date'     => $invDate,
+                    'due_date'         => $invDate->copy()->addDays(30),
+                    'client_id'        => $project->client_id,
+                    'business_unit_id' => optional($bongUnit)->id,
+                    'description'      => $invoiceDescription,
+                    'amount'           => $net,
+                    'paid_amount'      => 0,
+                    'status'           => 'draft',
+                    'source_type'      => 'project_termin',
+                    'source_id'        => $project->id,
+                    'created_by'       => Auth::id() ?? $project->created_by,
+                ]);
+                $invoice = $this->invoiceService->issue($invoice);
+            }
 
-            // 2. Issue invoice
-            $invoice = $this->invoiceService->issue($invoice);
-
-            // 3. Save termin record
-            ProjectTermin::create([
+            $termin = ProjectTermin::create([
                 'company_id'    => $project->company_id,
                 'project_id'    => $project->id,
                 'termin_number' => $nextTerminNumber,
                 'termin_pct'    => $terminPct,
-                'amount'        => $amount,
-                'invoice_id'    => $invoice->id,
+                'amount'        => $gross,
+                'dp_potong'     => $dpPotong,
+                'invoice_id'    => $invoice?->id,
                 'description'   => $description,
                 'created_by'    => Auth::id() ?? $project->created_by,
             ]);
 
-            // 4. BUG-09: Atomic increment tertagih_pct
+            // 2. Jurnal pemotongan DP: kewajiban Uang Muka → Pendapatan.
+            if ($dpPotong > 0) {
+                $journal = $this->postDpDeduction($company, $project, $termin, $dpPotong, $invDate, $bongUnit);
+                $termin->update(['dp_journal_id' => $journal->id]);
+
+                Project::withoutGlobalScopes()->where('id', $project->id)->increment('dp_dipotong', $dpPotong);
+            }
+
             Project::withoutGlobalScopes()
                 ->where('id', $project->id)
                 ->increment('tertagih_pct', $terminPct);
 
-            // Auto-close kalau tagih terakhir bikin tertagih 100% DAN progress sudah 100%.
-            // Support workflow: progress 100% dulu → tagih final → project auto 'selesai'.
             $this->syncProjectStatus($project->refresh());
 
-            return $invoice;
+            // Termin tertutup penuh oleh DP tidak punya invoice — kembalikan
+            // objek invoice "kosong" yang belum tersimpan supaya pemanggil (UI)
+            // tetap bisa menampilkan pesan.
+            return $invoice ?? new Invoice([
+                'invoice_number' => '—',
+                'amount'         => 0,
+                'description'    => $invoiceDescription . ' — lunas dari uang muka',
+            ]);
         });
+    }
+
+    /** Validasi termin terhadap proyek yang SUDAH di-lock. */
+    private function assertTerminAllowed(Project $project, float $terminPct): void
+    {
+        if (! $project->isBerjalan()) {
+            throw ValidationException::withMessages([
+                'status' => "Hanya proyek BERJALAN yang bisa ditagih (status sekarang: {$project->status}).",
+            ]);
+        }
+
+        $newTertagih = round((float) $project->tertagih_pct + $terminPct, 2);
+
+        if ($newTertagih > 100.00) {
+            throw ValidationException::withMessages([
+                'termin_pct' => "Total tertagih akan menjadi {$newTertagih}% — melebihi 100% nilai kontrak.",
+            ]);
+        }
+
+        if ($newTertagih > round((float) $project->progress_pct, 2) + 0.01) {
+            throw ValidationException::withMessages([
+                'termin_pct' => sprintf(
+                    'Termin %.2f%% + tertagih %.2f%% = %.2f%% melebihi progress fisik (%.2f%%). Update progress dulu.',
+                    $terminPct, $project->tertagih_pct, $newTertagih, $project->progress_pct,
+                ),
+            ]);
+        }
+    }
+
+    /**
+     * Potongan DP untuk termin ini: proporsional, maksimal sisa DP; termin
+     * penutup (tertagih jadi 100%) mengambil seluruh sisa DP.
+     */
+    public function dpDeduction(Project $project, float $terminPct): float
+    {
+        $sisaDp = round((float) $project->dp_diterima - (float) $project->dp_dipotong, 2);
+        if ($sisaDp <= 0) {
+            return 0.0;
+        }
+
+        if (round((float) $project->tertagih_pct + $terminPct, 2) >= 100.00) {
+            return $sisaDp;
+        }
+
+        return min($sisaDp, round((float) $project->dp_diterima * $terminPct / 100, 2));
+    }
+
+    private function postDpDeduction(Company $company, Project $project, ProjectTermin $termin, float $amount, Carbon $date, ?BusinessUnit $bong): JournalEntry
+    {
+        $uangMuka = Account::findByRoleOrCode(\App\Enums\AccountRole::UangMukaProyek, '221170', $company->id);
+        $revenue  = Account::findByRoleOrCode(\App\Enums\AccountRole::RevenueBong, '441400', $company->id);
+
+        if (! $uangMuka || ! $revenue) {
+            throw ValidationException::withMessages([
+                'account' => 'Akun Uang Muka Proyek atau Pendapatan Borongan tidak ditemukan/postable — lengkapi Peran akun di Daftar Akun.',
+            ]);
+        }
+
+        return $this->journalService->createEntryWithLines(
+            company:          $company,
+            date:             $date,
+            entryDataFactory: fn (string $entryNumber): array => [
+                'company_id'       => $company->id,
+                'entry_number'     => $entryNumber,
+                'entry_date'       => $date,
+                'document_number'  => "DPPOT-{$project->project_number}-T{$termin->termin_number}",
+                'document_type'    => 'penyesuaian',
+                'source_type'      => $termin->getMorphClass(),
+                'source_id'        => $termin->id,
+                'business_unit_id' => optional($bong)->id,
+                'description'      => "Pemotongan uang muka termin {$termin->termin_number} — {$project->project_number} {$project->name}",
+                'period_year'      => $date->year,
+                'period_month'     => $date->month,
+                'status'           => 'posted',
+                'created_by'       => Auth::id() ?? $project->created_by,
+                'posted_by'        => Auth::id() ?? $project->created_by,
+                'posted_at'        => now(),
+                'total_amount'     => $amount,
+            ],
+            linesFactory: fn (JournalEntry $entry): array => [
+                ['account_id' => $uangMuka->id, 'description' => "Potong uang muka termin {$termin->termin_number}", 'debit' => $amount, 'kredit' => 0],
+                ['account_id' => $revenue->id, 'description' => "Pendapatan termin {$termin->termin_number} dari uang muka", 'debit' => 0, 'kredit' => $amount],
+            ],
+        );
     }
 
     /**

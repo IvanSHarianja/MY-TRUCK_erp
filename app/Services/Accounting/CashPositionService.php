@@ -19,8 +19,9 @@ use Illuminate\Support\Facades\DB;
  * ATURAN DATA (sama dengan CashFlowService supaya bisa direkonsiliasi):
  *   - Hanya jurnal posted; 'pembalik' di-exclude (jurnal asli yang di-void
  *     sudah berstatus 'void', jadi efek void = 0).
- *   - Saldo awal = jurnal ber-Jenis Bukti 'saldo_awal'.
- *   - Mutasi = jurnal lain s.d. periode (year, month) — kumulatif.
+ *   - Periode = bulan dipilih, atau setahun bila tanpa bulan.
+ *   - Saldo awal = saldo rekening sebelum periode + jurnal 'saldo_awal' dalam periode.
+ *   - Mutasi = jurnal lain DI DALAM periode.
  *   - Transfer = jurnal yang SEMUA line-nya akun kas.
  */
 class CashPositionService
@@ -38,11 +39,20 @@ class CashPositionService
             return ['rows' => [], 'total' => $this->emptyTotals()];
         }
 
+        // Periode = bulan dipilih (atau setahun) — sama dengan CashFlowService.
+        [$startKey, $endKey] = CashFlowService::periodKeys($year, $month);
+
+        // Saldo awal = posisi rekening sebelum periode + jurnal saldo_awal dalam periode.
         $saldoAwal = DB::table('journal_entry_lines as jl')
             ->join('journal_entries as je', 'je.id', '=', 'jl.journal_entry_id')
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
-            ->where('je.document_type', 'saldo_awal')
+            ->where('je.document_type', '!=', 'pembalik')
+            ->where(function ($q) use ($startKey, $endKey) {
+                $q->whereRaw('(je.period_year * 100 + je.period_month) < ?', [$startKey])
+                  ->orWhere(fn ($q2) => $q2->where('je.document_type', 'saldo_awal')
+                      ->whereRaw('(je.period_year * 100 + je.period_month) <= ?', [$endKey]));
+            })
             ->whereIn('jl.account_id', $kasIds)
             ->groupBy('jl.account_id')
             ->selectRaw('jl.account_id, COALESCE(SUM(jl.debit), 0) - COALESCE(SUM(jl.kredit), 0) as net')
@@ -64,13 +74,7 @@ class CashPositionService
             ->where('je.status', 'posted')
             ->whereNotIn('je.document_type', ['saldo_awal', 'pembalik'])
             ->whereIn('jl.account_id', $kasIds)
-            ->where(function ($q) use ($year, $month) {
-                $q->where('je.period_year', '<', $year)
-                    ->orWhere(function ($q2) use ($year, $month) {
-                        $q2->where('je.period_year', $year)
-                            ->when($month !== null, fn ($q3) => $q3->where('je.period_month', '<=', $month));
-                    });
-            })
+            ->whereRaw('(je.period_year * 100 + je.period_month) BETWEEN ? AND ?', [$startKey, $endKey])
             ->groupBy('jl.account_id')
             ->selectRaw('
                 jl.account_id,

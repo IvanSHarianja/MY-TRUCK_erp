@@ -22,7 +22,8 @@ class EditArmadaContract extends EditRecord
             $this->getCancelFormAction(),
 
             DeleteAction::make()
-                ->visible(fn (): bool => $this->record->billed_rit === 0 && $this->record->total_rit === 0),
+                // Log per hari bisa 0 rit — cek keberadaan log, bukan jumlah rit.
+                ->visible(fn (): bool => ! $this->record->ritLogs()->exists() && ! $this->record->mobilizations()->exists()),
         ];
     }
 

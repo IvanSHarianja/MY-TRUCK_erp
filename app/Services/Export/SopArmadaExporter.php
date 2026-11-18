@@ -41,6 +41,7 @@ class SopArmadaExporter extends SopWorkbookExporter
         $contracts = $this->contractsInScope(self::T, $cid, $dariStr, $untilStr);
         $this->assertCapacity('Kontrak Armada', $contracts->count(), self::KONTRAK_LAST_ROW);
         [$totalRit, $billedRit] = $this->unitTotals(self::T, 'rit_count', $cid, $untilStr);
+        $gendong = $this->mobilizationTotals($cid, $untilStr);
 
         $kontrak = [];
         $row = self::FIRST_ROW;
@@ -64,7 +65,12 @@ class SopArmadaExporter extends SopWorkbookExporter
                 "U{$row}"  => SopLookups::APPROVED,
                 "V{$row}"  => round((float) ($totalRit[$c->id] ?? 0), 2),
                 "W{$row}"  => round((float) ($billedRit[$c->id] ?? 0), 2),
-                "AE{$row}" => $c->notes,
+                // Template SOP hanya kenal tarif per rit — satuan lain dicatat di
+                // Keterangan supaya kolom Tarif tidak salah dibaca.
+                "AE{$row}" => $this->withSatuanNote($c->satuan_tarif ?? 'per_rit', implode(' ', array_filter([
+                    $gendong[$c->id] ?? null,
+                    $c->notes,
+                ])) ?: null),
             ];
             $row++;
         }
@@ -77,7 +83,7 @@ class SopArmadaExporter extends SopWorkbookExporter
             ->where('l.company_id', $cid)
             ->where('l.log_date', '>=', $dariStr)->where('l.log_date', '<', $untilStr)
             ->orderBy('l.log_date')->orderBy('l.id')
-            ->select('l.*', 'c.contract_number', 'c.tipe_kontrak', 'c.bbm_liter_per_rit', 'c.harga_bbm_per_liter',
+            ->select('l.*', 'c.contract_number', 'c.tipe_kontrak', 'c.satuan_tarif', 'c.bbm_liter_per_rit', 'c.harga_bbm_per_liter',
                 'c.gaji_supir_per_hari', 'c.uang_makan_per_hari', 'c.uang_jalan_per_rit', 'c.premi_per_rit',
                 's.asset_code', 'e.employee_id as driver_code')
             ->get();
@@ -122,7 +128,12 @@ class SopArmadaExporter extends SopWorkbookExporter
                 "Y{$row}"  => $cost['uang_jalan'],
                 "Z{$row}"  => $cost['premi'],
                 "AC{$row}" => $l->invoice_id && isset($activeInvoices[$l->invoice_id]) ? 'Sudah Ditagih' : 'Belum Ditagih',
-                "AF{$row}" => $l->notes,
+                "AF{$row}" => implode(' ', array_filter([
+                    $l->satuan_tarif === 'per_m3' ? 'Volume ' . rtrim(rtrim(number_format((float) $l->volume_m3, 2, ',', '.'), '0'), ',') . ' M³.' : null,
+                    $l->satuan_tarif === 'per_ton' ? 'Tonase ' . rtrim(rtrim(number_format((float) $l->tonase, 2, ',', '.'), '0'), ',') . ' ton.' : null,
+                    $l->satuan_tarif === 'per_hari' ? ((float) $l->hari_kerja == 0.5 ? '½ hari kerja.' : '1 hari kerja.') : null,
+                    $l->notes,
+                ])) ?: null,
             ];
             $row++;
         }
@@ -147,5 +158,45 @@ class SopArmadaExporter extends SopWorkbookExporter
             'counts'   => ['kontrak' => $contracts->count(), 'ritase' => $logs->count(), 'tagih' => $nTagih],
             'warnings' => [],
         ];
+    }
+
+    /**
+     * Ongkos gendong per kontrak s.d. SAMPAI — template SOP tidak punya
+     * sheet-nya, jadi diringkas di Keterangan kontrak:
+     * "[Ongkos gendong: 3× Rp 7.500.000, belum ditagih Rp 2.500.000]".
+     *
+     * @return array<int, string> contract_id → teks
+     */
+    private function mobilizationTotals(int $cid, string $untilStr): array
+    {
+        $rp = fn ($n) => 'Rp ' . number_format((float) $n, 0, ',', '.');
+
+        return DB::table('armada_mobilizations as m')
+            ->leftJoin('invoices as i', 'i.id', '=', 'm.invoice_id')
+            ->where('m.company_id', $cid)
+            ->where('m.tanggal', '<', $untilStr)
+            ->groupBy('m.armada_contract_id')
+            ->selectRaw("m.armada_contract_id, COUNT(*) AS n, SUM(m.amount) AS total,
+                SUM(CASE WHEN m.invoice_id IS NULL OR i.status = 'void' THEN m.amount ELSE 0 END) AS belum")
+            ->get()
+            ->mapWithKeys(fn ($g) => [(int) $g->armada_contract_id => sprintf(
+                '[Mobilisasi alat: %d× %s%s]',
+                $g->n,
+                $rp($g->total),
+                (float) $g->belum > 0 ? ', belum ditagih ' . $rp($g->belum) : ', sudah ditagih semua',
+            )])
+            ->all();
+    }
+
+    private function withSatuanNote(string $satuan, ?string $notes): ?string
+    {
+        $prefix = match ($satuan) {
+            'per_m3'   => '[Tarif per M³ — kolom Tarif = Rp/M³, volume di Keterangan Ritase]',
+            'per_ton'  => '[Tarif per ton — kolom Tarif = Rp/ton, tonase di Keterangan Ritase]',
+            'per_hari' => '[Tarif per hari (rental harian) — kolom Tarif = Rp/hari]',
+            default    => null,
+        };
+
+        return implode(' ', array_filter([$prefix, $notes])) ?: null;
     }
 }

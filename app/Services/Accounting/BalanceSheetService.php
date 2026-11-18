@@ -70,14 +70,24 @@ class BalanceSheetService
         $totalKewajiban   = $totalKwjbLancar + $totalKwjbPanjang;
 
         // === EKUITAS ===
-        // Ekuitas dasar: akun kategori ekuitas (kecuali laba berjalan yang dihitung dari L/R)
-        $ekuitas = $balances->filter(fn ($r) => $r->category === 'ekuitas' && $r->code !== '331400')->values();
+        // Ekuitas dasar: SEMUA akun kategori ekuitas. Dulu 331400 dikecualikan
+        // berdasar kode → posting manual ke akun itu (mis. tutup buku manual)
+        // hilang dari Neraca dan Neraca selisih. Laba yang belum dipindah
+        // dihitung terpisah dari akun L/R di bawah, jadi tidak terhitung dua kali.
+        $ekuitas = $balances->filter(fn ($r) => $r->category === 'ekuitas')->values();
 
         $totalEkuitasBase = (float) $ekuitas->sum('nilai');
 
-        // Laba berjalan dari L/R
-        $labaBerjalan  = $this->incomeStatement->getNetProfit($companyId, $year, $month);
-        $totalEkuitas  = $totalEkuitasBase + $labaBerjalan;
+        // Laba yang belum masuk Laba Ditahan:
+        //  - laba tahun-tahun lalu yang BELUM ditutup buku — dulu hilang, Neraca
+        //    selisih sebesar laba tahun lalu mulai tahun kedua;
+        //  - laba tahun berjalan, termasuk efek jurnal penutup (setelah tutup buku
+        //    = 0 karena sudah di Laba Ditahan; tidak terhitung dua kali).
+        $closing = app(YearEndClosingService::class);
+        $labaTahunLalu = $closing->unclosedProfitBefore($companyId, $year);
+        $labaBerjalan  = $closing->profitStillInIncomeAccounts($companyId, $year, $month);
+        $tahunBelumDitutup = $labaTahunLalu != 0.0 ? $closing->openYearsBefore($companyId, $year) : [];
+        $totalEkuitas  = $totalEkuitasBase + $labaTahunLalu + $labaBerjalan;
 
         $totalPasiva = $totalKewajiban + $totalEkuitas;
         $selisih     = round($totalAset - $totalPasiva, 2);
@@ -92,6 +102,7 @@ class BalanceSheetService
             'kwjbPanjang','totalKwjbPanjang',
             'totalKewajiban',
             'ekuitas',    'totalEkuitasBase',
+            'labaTahunLalu', 'tahunBelumDitutup',
             'labaBerjalan',
             'totalEkuitas',
             'totalPasiva',

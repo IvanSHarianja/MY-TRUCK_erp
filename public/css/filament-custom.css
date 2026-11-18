@@ -1107,6 +1107,23 @@ details[open] .coa-notice-toggle-close { display: inline; }
     .coa-notice-toggle, .coa-notice-link { margin-left: 0; }
 }
 
+/* ===== Buku Besar ===== */
+.gl-empty { padding: 1rem 1.25rem; }
+.gl-notice { margin: 0 1.25rem 1rem; }
+.gl-account-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; flex-wrap: wrap; }
+.gl-closing { display: flex; flex-direction: column; align-items: flex-end; font-weight: 600; font-size: 1rem; }
+.gl-table td { vertical-align: top; }
+.gl-nowrap { white-space: nowrap; }
+.gl-row-opening td { background: var(--mt-surface-2); }
+.gl-link { color: var(--mt-accent-blue); text-decoration: none; }
+.gl-link:hover { text-decoration: underline; }
+
+/* ===== Margin Proyek ===== */
+.pm-units { margin-top: 4px; }
+.pm-units summary { cursor: pointer; }
+.pm-units-table { margin-top: 4px; font-size: 0.75rem; }
+.pm-units-table td { padding: 2px 12px 2px 0; border: none; }
+
 /* ===== Import Armada & Alat Berat ===== */
 .asset-import-step { padding: 1.25rem; }
 .asset-import-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1rem; flex-wrap: wrap; }

@@ -33,6 +33,27 @@ Menu **Penjualan Material** → **Buat Penjualan Baru**. Pilih **Metode Pembayar
 
 Stok berkurang otomatis dan **HPP** dijurnal memakai MAC saat penjualan.
 
+**Dijual per**:
+
+- **Satuan material** (M³ / ton) — total = volume × harga.
+- **Rit** — total = jumlah rit × **harga per rit**. Tetap isi **Volume Keluar dari Stok** (mis. 10 rit × 6 M³ = 60 M³), karena stok & HPP selalu dihitung dalam satuan material.
+
+**Pengiriman (Armada)** — biaya mengantar material, dicatat per penjualan dan dibayar tunai dari kas yang dipilih:
+
+| Isian | Dihitung | Masuk ke akun |
+|---|---|---|
+| Ongkos supir | per rit × jumlah rit | Premi & Uang Jalan |
+| BM (bongkar muat) | per rit × jumlah rit | Subkontraktor / BM |
+| Uang makan supir, Portal | nominal | Premi & Uang Jalan |
+| BBM | nominal | Beban BBM |
+| Lain-lain | nominal + keterangan | Beban Lain |
+
+Pilih **Truk** supaya biayanya masuk **Laba Rugi per Unit**. Bagian bawah form menampilkan **Perkiraan Margin** sebelum disimpan.
+
+### Laporan Margin Penjualan
+
+Daftar Penjualan Material → **Laporan Margin**: per penjualan berisi penjualan − HPP − biaya kirim = **margin (Rp & %)**, dengan filter tanggal, klien, dan material, plus **Export Excel** berisi rincian setiap biaya. Penjualan yang invoice-nya di-void tidak dihitung — void juga membatalkan jurnal HPP & biaya kirimnya.
+
 ### Sparepart: dari gudang ke unit
 
 1. **Beli** lewat **Pembelian Material** seperti biasa — stok dan MAC terisi otomatis.

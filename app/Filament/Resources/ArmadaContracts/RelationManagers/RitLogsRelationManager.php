@@ -28,7 +28,7 @@ class RitLogsRelationManager extends RelationManager
 {
     protected static string $relationship = 'ritLogs';
 
-    protected static ?string $title = 'Log Ritase Harian';
+    protected static ?string $title = 'Log Harian';
 
     public function form(Schema $schema): Schema
     {
@@ -72,13 +72,47 @@ class RitLogsRelationManager extends RelationManager
                     })
                     ->searchable(),
 
+                // Rental harian: unit bisa standby (0 rit) tapi tetap dibayar per hari.
                 TextInput::make('rit_count')
                     ->label('Jumlah Rit')
                     ->required()
                     ->numeric()
-                    ->minValue(1)
+                    ->minValue(fn ($livewire): int => $livewire->getOwnerRecord()->satuan() === 'per_hari' ? 0 : 1)
+                    ->default(fn ($livewire): int => $livewire->getOwnerRecord()->satuan() === 'per_hari' ? 0 : 1)
                     ->step(1)
-                    ->live(onBlur: true),
+                    ->live(onBlur: true)
+                    ->helperText(fn ($livewire): ?string => $livewire->getOwnerRecord()->satuan() === 'per_hari'
+                        ? 'Boleh 0 bila unit standby. Rit tetap dipakai untuk biaya BBM, uang jalan & premi.'
+                        : null),
+
+                TextInput::make('volume_m3')
+                    ->label('Volume (M³)')
+                    ->numeric()
+                    ->minValue(0.01)
+                    ->step(0.01)
+                    ->suffix('M³')
+                    ->helperText('Total volume hari ini dari surat jalan / tiket timbang — dasar tagihan.')
+                    ->visible(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_m3')
+                    ->required(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_m3'),
+
+                TextInput::make('tonase')
+                    ->label('Tonase (ton)')
+                    ->numeric()
+                    ->minValue(0.01)
+                    ->step(0.01)
+                    ->suffix('ton')
+                    ->helperText('Total berat hari ini dari tiket timbang — dasar tagihan.')
+                    ->visible(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_ton')
+                    ->required(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_ton'),
+
+                Select::make('hari_kerja')
+                    ->label('Hari Kerja')
+                    ->native(false)
+                    ->options(['1.0' => '1 hari penuh', '0.5' => '½ hari'])
+                    ->default('1.0')
+                    ->helperText('Dasar tagihan sewa harian.')
+                    ->visible(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_hari')
+                    ->required(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_hari'),
 
                 TextInput::make('solar_liter')
                     ->label('Solar Actual (Liter)')
@@ -196,7 +230,32 @@ class RitLogsRelationManager extends RelationManager
                 TextColumn::make('rit_count')
                     ->label('Rit')
                     ->alignEnd()
-                    ->weight('bold'),
+                    ->weight(fn ($livewire) => $livewire->getOwnerRecord()->satuan() === 'per_rit' ? 'bold' : null),
+
+                TextColumn::make('volume_m3')
+                    ->label('Volume')
+                    ->suffix(' M³')
+                    ->numeric(decimalPlaces: 2, decimalSeparator: ',', thousandsSeparator: '.')
+                    ->alignEnd()
+                    ->weight('bold')
+                    ->placeholder('—')
+                    ->visible(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_m3'),
+
+                TextColumn::make('tonase')
+                    ->label('Tonase')
+                    ->suffix(' ton')
+                    ->numeric(decimalPlaces: 2, decimalSeparator: ',', thousandsSeparator: '.')
+                    ->alignEnd()
+                    ->weight('bold')
+                    ->placeholder('—')
+                    ->visible(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_ton'),
+
+                TextColumn::make('hari_kerja')
+                    ->label('Hari')
+                    ->formatStateUsing(fn ($state) => (float) $state == 0.5 ? '½' : rtrim(rtrim((string) $state, '0'), '.'))
+                    ->alignEnd()
+                    ->weight('bold')
+                    ->visible(fn ($livewire): bool => $livewire->getOwnerRecord()->satuan() === 'per_hari'),
 
                 TextColumn::make('invoice.invoice_number')
                     ->label('Invoice')

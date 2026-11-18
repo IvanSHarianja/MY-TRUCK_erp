@@ -21,6 +21,7 @@ class RentalLog extends Model
         'hm_awal',
         'hm_akhir',
         'jam_kerja',
+        'tarif',
         'solar_liter',
         'voucher_solar',
         'uang_makan_operator',
@@ -42,7 +43,23 @@ class RentalLog extends Model
         'uang_makan_operator' => 'decimal:2',
         'premi_operator'      => 'decimal:2',
         'override_biaya'      => 'boolean',
+        'tarif'               => 'integer',
     ];
+
+    protected static function booted(): void
+    {
+        // Tarif per jam dikunci saat log dibuat (lihat RitLog::booted).
+        static::creating(function (RentalLog $log) {
+            if ($log->tarif === null && $log->rental_contract_id) {
+                $log->tarif = RentalContract::withoutGlobalScopes()->whereKey($log->rental_contract_id)->value('tarif_per_jam');
+            }
+        });
+    }
+
+    public function effectiveTarif(?RentalContract $contract = null): float
+    {
+        return (float) ($this->tarif ?? ($contract ?? $this->rentalContract)?->tarif_per_jam ?? 0);
+    }
 
     public function rentalContract(): BelongsTo
     {

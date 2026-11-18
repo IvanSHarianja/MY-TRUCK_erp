@@ -121,6 +121,7 @@ class AssetImportService
                     'purchase_date'            => $r['purchase_date'],
                     'purchase_price'           => $r['price'] ?? 0,
                     'salvage_value'            => 0,
+                    'akumulasi_awal'           => $r['akumulasi_awal'],
                     'depreciation_method'      => DepreciationMethod::StraightLine->value,
                     'useful_life_months'       => $r['life_months'],
                     'account_id'               => $this->assetAccount($companyId, $r['type'])?->id,
@@ -351,10 +352,21 @@ class AssetImportService
                 default                                               => null,
             };
 
+            // Aset lama: penyusutan yang sudah terjadi sebelum memakai MY-TRUCK
+            // (perkiraan garis lurus s/d akhir bulan lalu). Tanpa ini aset 2015
+            // tidak pernah disusutkan tapi nilai bukunya tetap 100%.
+            $akumulasiAwal = ($price !== null && ! in_array('tanggal beli', $missing, true))
+                ? (new Asset([
+                    'purchase_date' => $date, 'purchase_price' => $price, 'salvage_value' => 0,
+                    'useful_life_months' => $lifeMonths,
+                ]))->estimatedAkumulasiAwal($today)
+                : 0;
+
             $notes = array_filter([
                 $p['desc'] !== null ? rtrim($p['desc'], '. ') . '.' : null,
                 $sold ? 'Sudah dijual.' : null,
                 ...$info,
+                $akumulasiAwal > 0 ? 'Akumulasi penyusutan awal Rp ' . number_format($akumulasiAwal, 0, ',', '.') . ' (perkiraan garis lurus).' : null,
                 $missing !== [] ? self::INCOMPLETE_MARKER . ' ' . implode(', ', $missing) . '.' : null,
                 'Diimpor dari Excel (' . $p['source'] . ').',
             ]);
@@ -372,6 +384,7 @@ class AssetImportService
                 'date_estimated' => $info !== [],
                 'price'          => $price,
                 'life_months'    => $lifeMonths,
+                'akumulasi_awal' => $akumulasiAwal,
                 'status'         => $status,
                 'bu'             => $this->businessUnitCode($type, $p['group']),
                 'missing'        => $missing,

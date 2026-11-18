@@ -116,6 +116,7 @@ class JournalEntriesTable
                     ->label('Post')
                     ->icon(Heroicon::CheckCircle)
                     ->color('success')
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(\App\Enums\Permission::JournalPost) ?? false)
                     ->visible(fn (JournalEntry $record): bool => $record->isDraft())
                     ->requiresConfirmation()
                     ->modalHeading('Post Jurnal')

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Projects\Tables;
 
+use App\Enums\Permission;
 use App\Models\Account;
 use App\Models\Project;
 use App\Services\Accounting\ProjectService;
@@ -111,6 +112,8 @@ class ProjectsTable
                         ->label('Terima DP')
                         ->icon(Heroicon::OutlinedArrowDownTray)
                         ->color('success')
+                        // authorize(): sembunyikan DAN tolak eksekusi di server.
+                        ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::PaymentManage) ?? false)
                         ->visible(fn (Project $p): bool => $p->isBerjalan())
                         ->schema([
                             DatePicker::make('dp_date')
@@ -187,6 +190,7 @@ class ProjectsTable
                         ->label('Update Progress')
                         ->icon(Heroicon::OutlinedChartBar)
                         ->color('info')
+                        ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::OperationalManage) ?? false)
                         ->visible(fn (Project $p): bool => $p->isBerjalan())
                         ->schema([
                             DatePicker::make('update_date')
@@ -234,6 +238,7 @@ class ProjectsTable
                         ->label('Tagih Termin')
                         ->icon(Heroicon::Banknotes)
                         ->color('warning')
+                        ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::InvoiceCreate) ?? false)
                         ->visible(fn (Project $p): bool => $p->isBerjalan() && (float) $p->progress_pct > (float) $p->tertagih_pct)
                         ->schema([
                             DatePicker::make('invoice_date')
@@ -249,19 +254,24 @@ class ProjectsTable
                                 ->minValue(0.01)
                                 ->step(0.01)
                                 ->suffix('%')
-                                ->helperText(function (Project $r): string {
-                                    $tertagihNilai = round((float) $r->nilai_kontrak * (float) $r->tertagih_pct / 100, 2);
-                                    $sisaTermin = max(0, (float) $r->nilai_kontrak - $tertagihNilai - (float) $r->dp_diterima);
-                                    $maxPct = $r->nilai_kontrak > 0 ? round($sisaTermin / $r->nilai_kontrak * 100, 2) : 0;
+                                ->live(onBlur: true)
+                                // Pratinjau: bruto, potongan DP proporsional, dan nilai invoice bersih.
+                                ->helperText(function (Project $r, $state): string {
+                                    $rp = fn ($n) => 'Rp ' . number_format((float) $n, 0, ',', '.');
+                                    $maxPct = max(0, min(100, (float) $r->progress_pct) - (float) $r->tertagih_pct);
+                                    $sisaDp = max(0, (float) $r->dp_diterima - (float) $r->dp_dipotong);
+                                    $info = sprintf('Progress fisik %s%% · tertagih %s%% · maks. termin %s%% · sisa uang muka %s',
+                                        $r->progress_pct, $r->tertagih_pct, rtrim(rtrim(number_format($maxPct, 2, ',', '.'), '0'), ','), $rp($sisaDp));
 
-                                    return sprintf(
-                                        'Progress fisik: %s%% · Tertagih: %s%% · DP: Rp %s · Sisa bisa ditagih: Rp %s (%.2f%%)',
-                                        $r->progress_pct,
-                                        $r->tertagih_pct,
-                                        number_format((float) $r->dp_diterima, 0, ',', '.'),
-                                        number_format($sisaTermin, 0, ',', '.'),
-                                        $maxPct,
-                                    );
+                                    $pct = (float) $state;
+                                    if ($pct <= 0) {
+                                        return $info;
+                                    }
+                                    $gross = round((float) $r->nilai_kontrak * $pct / 100, 2);
+                                    $potong = app(ProjectService::class)->dpDeduction($r, $pct);
+
+                                    return $info . sprintf(' — Termin %s%%: %s − potongan uang muka %s = invoice %s',
+                                        $pct, $rp($gross), $rp($potong), $rp($gross - $potong));
                                 }),
 
                             Textarea::make('description')
@@ -295,6 +305,7 @@ class ProjectsTable
                         ->label('Tutup Proyek')
                         ->icon(Heroicon::CheckCircle)
                         ->color('gray')
+                        ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::OperationalManage) ?? false)
                         ->visible(fn (Project $p): bool => $p->isBerjalan())
                         ->requiresConfirmation()
                         ->modalDescription('Pastikan semua progress sudah 100% dan semua termin sudah ditagih.')

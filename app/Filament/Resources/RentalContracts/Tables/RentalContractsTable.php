@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\RentalContracts\Tables;
 
+use App\Enums\Permission;
 use App\Models\RentalContract;
 use App\Services\Accounting\RentalContractService;
 use Filament\Actions\Action;
@@ -88,6 +89,7 @@ class RentalContractsTable
                     ->label('Tagih')
                     ->icon(Heroicon::Banknotes)
                     ->color('warning')
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::InvoiceCreate) ?? false)
                     ->visible(fn (RentalContract $r): bool => $r->isAktif() && $r->unbilled_jam > 0)
                     ->schema([
                         DatePicker::make('invoice_date')
@@ -120,6 +122,7 @@ class RentalContractsTable
                     ->label('Tutup Kontrak')
                     ->icon(Heroicon::CheckCircle)
                     ->color('gray')
+                    ->authorize(fn (): bool => auth()->user()?->canCurrent(Permission::OperationalManage) ?? false)
                     ->visible(fn (RentalContract $r): bool => $r->isAktif() && $r->unbilled_jam <= 0)
                     ->requiresConfirmation()
                     ->action(function (RentalContract $record) {

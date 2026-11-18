@@ -36,7 +36,11 @@ class EquityStatementService
         $modalPemilik  = $this->trialBalance->getAccountBalance($companyId, $modalCode, $year, $month);
         $labaDitahan   = $this->trialBalance->getAccountBalance($companyId, $labaDitahanCode, $year, $month);
         $priveRaw      = $this->trialBalance->getAccountBalance($companyId, $priveCode, $year, $month);
-        $labaBerjalan  = $this->incomeStatement->getNetProfit($companyId, $year, $month);
+        // Sama dengan Neraca: laba tahun lalu yang belum ditutup buku ikut
+        // Laba Ditahan; laba berjalan termasuk efek jurnal penutup.
+        $closing       = app(YearEndClosingService::class);
+        $labaDitahan  += $closing->unclosedProfitBefore($companyId, $year);
+        $labaBerjalan  = $closing->profitStillInIncomeAccounts($companyId, $year, $month);
 
         // Saldo akun 331200 (Prive) normal_balance = debit, jadi saldo positif berarti pengambilan.
         // getAccountBalance return: normal_balance debit → diff >0 berarti saldo. Sudah positif.

@@ -267,8 +267,17 @@ class InvoiceService
                 ->where('invoice_id', $invoice->id)
                 ->distinct()
                 ->pluck('asset_id')
-                ->filter()
-                ->all();
+                ->filter();
+
+            // Ongkos gendong ikut menentukan: truk self loader-nya juga unit penghasil.
+            $mobs = \App\Models\ArmadaMobilization::withoutGlobalScopes()
+                ->where('company_id', $invoice->company_id)
+                ->where('invoice_id', $invoice->id)
+                ->get(['asset_id']);
+            if ($mobs->contains(fn ($m) => $m->asset_id === null)) {
+                return null;    // ada gendong tanpa unit → tidak bisa dipastikan satu unit
+            }
+            $assetIds = $assetIds->merge($mobs->pluck('asset_id'))->unique()->values()->all();
 
             return count($assetIds) === 1 ? (int) $assetIds[0] : null;
         }

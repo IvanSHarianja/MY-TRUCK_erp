@@ -56,6 +56,11 @@ class TrialBalanceService
             // tampil sebagai Kas -1jt. Konsisten dengan CashFlow, IS Matrix,
             // IS per Aset: efek void = 0 di laporan.
             ->where('je.document_type', '!=', 'pembalik')
+            // Jurnal PENUTUP (Tutup Buku tahunan) memindahkan saldo pendapatan &
+            // beban ke Laba Ditahan. Laporan L/R (scope 'period') mengabaikannya
+            // supaya laba tahun itu tetap tampil; Neraca Saldo/Neraca (cumulative)
+            // memuatnya supaya Laba Ditahan bertambah & akun L/R kembali nol.
+            ->when($scopeMode === 'period', fn ($q) => $q->where('je.document_type', '!=', 'penutup'))
             ->when($scopeMode === 'cumulative', function ($q) use ($year, $month) {
                 // Neraca / TB: kumulatif sejak inception s/d $year (dan optionally $month)
                 $q->where('je.period_year', '<=', $year)

@@ -179,20 +179,29 @@ class OperationalInsightService
             ];
         }
 
-        // Rit logs unbilled
+        // Armada: log harian + ongkos gendong yang belum ditagih (semua satuan tarif).
         $ritGroups = RitLog::withoutGlobalScopes()
             ->where('company_id', $companyId)
             ->whereNull('invoice_id')
-            ->where('rit_count', '>', 0)
-            ->selectRaw('armada_contract_id, SUM(rit_count) as total_rit, MIN(log_date) as oldest_date, COUNT(*) as log_count')
+            ->selectRaw('armada_contract_id, MIN(log_date) as oldest_date')
             ->groupBy('armada_contract_id')
-            ->get();
+            ->pluck('oldest_date', 'armada_contract_id');
+        $mobGroups = \App\Models\ArmadaMobilization::withoutGlobalScopes()
+            ->where('company_id', $companyId)
+            ->whereNull('invoice_id')
+            ->selectRaw('armada_contract_id, MIN(tanggal) as oldest_date')
+            ->groupBy('armada_contract_id')
+            ->pluck('oldest_date', 'armada_contract_id');
 
-        foreach ($ritGroups as $g) {
-            $contract = ArmadaContract::withoutGlobalScopes()
-                ->with(['client'])
-                ->find($g->armada_contract_id);
-            if (! $contract) continue;
+        $contractIds = $ritGroups->keys()->merge($mobGroups->keys())->unique();
+        $contracts = ArmadaContract::withoutGlobalScopes()->with('client')->withUnbilled()->whereIn('id', $contractIds)->get();
+
+        foreach ($contracts as $contract) {
+            $s = $contract->unbilledSummary();
+            if ($s['qty'] <= 0 && $s['mob_count'] === 0) {
+                continue;   // log harian tanpa kuantitas (mis. rit 0 di kontrak per rit)
+            }
+            $oldest = collect([$ritGroups[$contract->id] ?? null, $mobGroups[$contract->id] ?? null])->filter()->min();
 
             $rows[] = [
                 'contract_type'   => 'ARMD',
@@ -200,11 +209,11 @@ class OperationalInsightService
                 'contract_id'     => $contract->id,
                 'client_name'     => optional($contract->client)->name ?? '—',
                 'asset_code'      => '—',
-                'unbilled_qty'    => (int) $g->total_rit,
-                'unit'            => 'rit',
-                'estimated_value' => (int) round((int) $g->total_rit * (float) $contract->tarif_per_rit),
-                'oldest_log_date' => $g->oldest_date,
-                'oldest_days_ago' => (int) Carbon::parse($g->oldest_date)->diffInDays(Carbon::today()),
+                'unbilled_qty'    => $s['qty'],
+                'unit'            => $contract->unitLabel() . ($s['mob_count'] ? " + {$s['mob_count']} mobilisasi" : ''),
+                'estimated_value' => (int) round($s['total']),
+                'oldest_log_date' => $oldest,
+                'oldest_days_ago' => (int) Carbon::parse($oldest)->diffInDays(Carbon::today()),
             ];
         }
 

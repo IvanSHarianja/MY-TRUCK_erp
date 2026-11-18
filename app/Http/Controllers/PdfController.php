@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Account;
 use App\Models\Company;
 use App\Models\Invoice;
+use App\Services\Accounting\GeneralLedgerService;
+use Illuminate\Support\Carbon;
 use App\Services\Accounting\AssetCostPerUnitService;
 use App\Services\Accounting\AssetDepreciationReportService;
 use App\Services\Accounting\BalanceSheetService;
@@ -59,6 +62,50 @@ class PdfController extends Controller
         ])->setPaper('a4');
 
         return $pdf->stream("Neraca-Saldo-{$tenant->slug}-{$year}-" . ($month ?? 'YTD') . ".pdf");
+    }
+
+    /**
+     * Buku Besar PDF. Terlalu banyak baris → hanya ringkasan per akun (DomPDF
+     * lambat & boros memori untuk ribuan baris); rincian lengkap lewat Excel.
+     */
+    public function generalLedger(Request $request, Company $tenant)
+    {
+        [$dari, $sampai, $accountId] = $this->ledgerFilters($request, $tenant);
+
+        $ledger = app(GeneralLedgerService::class)
+            ->build($tenant->id, $dari, $sampai, $accountId, lineLimit: 3000);
+
+        $pdf = Pdf::loadView('pdf.reports.general-ledger', [
+            'company'     => $tenant,
+            'ledger'      => $ledger,
+            'dari'        => $dari,
+            'sampai'      => $sampai,
+            'periodLabel' => $dari->translatedFormat('d F Y') . ' s/d ' . $sampai->translatedFormat('d F Y'),
+        ])->setPaper('a4', 'landscape');
+
+        return $pdf->stream("Buku-Besar-{$tenant->slug}-{$dari->format('Ymd')}-{$sampai->format('Ymd')}.pdf");
+    }
+
+    /**
+     * Filter Buku Besar dari query string. Akun wajib milik PT ini (IDOR).
+     *
+     * @return array{0: Carbon, 1: Carbon, 2: ?int}
+     */
+    public static function ledgerFilters(Request $request, Company $tenant): array
+    {
+        $data = $request->validate([
+            'dari'       => ['required', 'date'],
+            'sampai'     => ['required', 'date', 'after_or_equal:dari'],
+            'account_id' => ['nullable', 'integer'],
+        ]);
+
+        $accountId = null;
+        if (! empty($data['account_id'])) {
+            $accountId = Account::withoutGlobalScopes()->where('company_id', $tenant->id)->whereKey($data['account_id'])->value('id');
+            abort_unless($accountId, 404);
+        }
+
+        return [Carbon::parse($data['dari'])->startOfDay(), Carbon::parse($data['sampai'])->startOfDay(), $accountId];
     }
 
     /**

@@ -40,7 +40,7 @@ class IncomeStatementByAssetService
             ->join('accounts as a', 'a.id', '=', 'jl.account_id')
             ->where('je.company_id', $companyId)
             ->where('je.status', 'posted')
-            ->where('je.document_type', '!=', 'pembalik')
+            ->whereNotIn('je.document_type', ['pembalik', 'penutup'])   // penutup: lihat TrialBalanceService
             // BUG-16: L/R per aset hanya periode berjalan, bukan kumulatif
             ->where('je.period_year', $year)
             ->when($month !== null, fn ($q) => $q->where('je.period_month', '<=', $month))

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ArmadaContracts\Schemas;
 
+use App\Models\ArmadaContract;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
@@ -61,11 +62,29 @@ class ArmadaContractForm
                             ->placeholder('contoh: Angkutan tanah urug Kuari → Kawasan Industri (12 km)')
                             ->columnSpanFull(),
 
+                        Select::make('satuan_tarif')
+                            ->label('Satuan Tarif')
+                            ->native(false)
+                            ->required()
+                            ->default('per_rit')
+                            ->options(collect(ArmadaContract::SATUAN)->map(fn ($s) => $s['label'])->all())
+                            ->live()
+                            // Terkunci setelah ada log harian (log lama diisi untuk satuan lama).
+                            ->disabled(fn (?ArmadaContract $record): bool => (bool) $record?->ritLogs()->exists())
+                            ->helperText(fn (?ArmadaContract $record): string => $record?->ritLogs()->exists()
+                                ? 'Terkunci karena sudah ada log harian. Buat kontrak baru untuk satuan lain.'
+                                : 'Ongkos gendong (jasa angkut) ditagih per rit, per M³ (surat jalan), atau per ton (tiket timbang). Per Hari: sewa dump truck per hari kerja. Biaya angkut alat berat pakai self loader dicatat di tab Mobilisasi Alat Berat.'),
+
                         TextInput::make('tarif_per_rit')
-                            ->label('Tarif per Rit (Rp)')
+                            ->label(fn (Get $get): string => 'Tarif per ' . (ArmadaContract::SATUAN[$get('satuan_tarif') ?? 'per_rit']['unit'] ?? 'rit') . ' (Rp)')
                             ->required()
                             ->rupiah()
-                            ->placeholder('contoh: 250000'),
+                            ->placeholder(fn (Get $get): string => match ($get('satuan_tarif')) {
+                                'per_m3'   => 'contoh: 45000',
+                                'per_ton'  => 'contoh: 30000',
+                                'per_hari' => 'contoh: 1500000',
+                                default    => 'contoh: 250000',
+                            }),
 
                         Textarea::make('notes')
                             ->label('Catatan')
