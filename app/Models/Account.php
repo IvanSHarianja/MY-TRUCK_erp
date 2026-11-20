@@ -270,6 +270,13 @@ class Account extends Model
         //
         // Solusi: auto-derive dari role (priority 1) atau category (priority 2).
         // Explicit user set tetap dihormati (cuma fill kalau kosong).
+        // Peran diganti user → bukan lagi hasil tebakan import: penanda dibuang.
+        static::updating(function (Account $account) {
+            if ($account->isDirty('role')) {
+                $account->notes = \App\Services\CoaImportService::stripGuessedNote($account->notes);
+            }
+        });
+
         static::saving(function (Account $account) {
             // Priority 1: role di-set → derive persis
             if ($account->role) {

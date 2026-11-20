@@ -54,6 +54,11 @@ Template berisi 4 kolom: **Kode**, **Nama Akun**, **Kategori** (aset/kewajiban/e
 
 Setelah import, kotak kuning di atas daftar menyebut fitur yang **Perannya belum lengkap** (klik **Lihat rincian**), dan tautan **Periksa akun ini** menampilkan akun yang Perannya ditebak dari nama (bertanda ⚠ di kolom Peran). Filter **Perlu Diperiksa** juga bisa menampilkan *akun transaksi tanpa Peran*.
 
+Peringatan **berkurang sendiri** begitu diperbaiki:
+
+- **Peran tebakan (⚠)** hilang bila Peran akun diganti, akun disimpan lewat **Edit**, atau diklik **Peran Benar** di baris akun. Untuk banyak akun sekaligus: centang akunnya → **Tandai Peran Sudah Diperiksa**.
+- **Fitur yang Perannya belum lengkap** hilang dari kotak kuning begitu ada akun transaksi (sub-akun, aktif) dengan Peran itu. Peran yang dipasang di **akun induk** tidak dihitung — pasang di sub-akunnya.
+
 Selain itu, **wajib cek**:
 
 - Akun dengan **kode standar** (111100, 441100, dst) otomatis mendapat Peran. Akun dengan **kode sendiri** belum punya Peran — buka tiap akun penting dan isi Perannya, mengacu ke [Paket Akun per Fitur](#coa-paket).

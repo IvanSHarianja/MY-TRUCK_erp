@@ -62,6 +62,7 @@ final class UserGuide
         ['key' => 'tagihan', 'group' => 'Keuangan', 'title' => 'Tagihan & Piutang', 'pages' => [Resources\Invoices\InvoiceResource::class]],
         ['key' => 'hutang', 'group' => 'Keuangan', 'title' => 'Hutang & Cicilan', 'pages' => [Resources\Debts\DebtResource::class]],
         ['key' => 'jurnal-umum', 'group' => 'Keuangan', 'title' => 'Jurnal Umum', 'pages' => [Resources\JournalEntries\JournalEntryResource::class]],
+        ['key' => 'laporan-harian', 'group' => 'Keuangan', 'title' => 'Laporan Harian Keuangan', 'pages' => [Reports\DailyReport::class]],
         ['key' => 'buku-besar', 'group' => 'Keuangan', 'title' => 'Buku Besar', 'pages' => [Reports\GeneralLedger::class]],
         ['key' => 'tutup-buku', 'group' => 'Keuangan', 'title' => 'Tutup Buku Tahunan', 'pages' => [\App\Filament\Pages\YearEndClosing::class]],
         ['key' => 'laporan-keuangan', 'group' => 'Keuangan', 'title' => 'Laporan Keuangan', 'pages' => [

@@ -40,8 +40,10 @@ final class AccountRoleReadiness
 
         foreach (self::FEATURES as $feature => $roles) {
             foreach ($roles as $role) {
-                // Cara mencari = cara fitur mencari akun saat menjurnal.
-                $found[$role->value] ??= Account::findByRoleOrCode($role, $codes[$role->value] ?? '', $companyId) !== null;
+                // Cara mencari = cara fitur mencari akun saat menjurnal (termasuk
+                // cadangannya) — kalau beda, peringatan tidak pernah hilang
+                // walau fiturnya jalan.
+                $found[$role->value] ??= self::resolve($role, $codes[$role->value] ?? '', $companyId) !== null;
 
                 if (! $found[$role->value]) {
                     $result[$feature][] = $role->label();
@@ -50,6 +52,16 @@ final class AccountRoleReadiness
         }
 
         return $result;
+    }
+
+    private static function resolve(AccountRole $role, string $code, int $companyId): ?Account
+    {
+        return match ($role) {
+            // Pembelian & penjualan material memakai Persediaan Material, lalu
+            // Persediaan Solar sebagai cadangan (Account::materialInventoryAccount).
+            AccountRole::InventoryMaterial => Account::materialInventoryAccount($companyId),
+            default => Account::findByRoleOrCode($role, $code, $companyId),
+        };
     }
 
     /** Ringkasan satu baris untuk notifikasi/subjudul. */

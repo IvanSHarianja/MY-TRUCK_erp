@@ -45,6 +45,22 @@ class CoaImportService
     public const GUESSED_ROLE_PREFIX = 'Peran diisi otomatis';
 
     /**
+     * Buang penanda "Peran hasil tebakan" dari catatan (catatan lain tetap).
+     * Dipanggil saat Peran diubah / dikonfirmasi user — dulu penanda hanya
+     * hilang bila teks catatannya dihapus manual, jadi peringatan di Daftar
+     * Akun tidak pernah berkurang walau Peran sudah diperiksa.
+     */
+    public static function stripGuessedNote(?string $notes): ?string
+    {
+        if ($notes === null || ! str_contains($notes, self::GUESSED_ROLE_PREFIX)) {
+            return $notes;
+        }
+        $clean = trim(preg_replace('/' . preg_quote(self::GUESSED_ROLE_PREFIX, '/') . '[^.]*\.?\s*/u', '', $notes));
+
+        return $clean === '' ? null : $clean;
+    }
+
+    /**
      * Ringkasan import terakhir: format, jumlah akun, slot dilewati, peran terisi.
      * Dipakai notifikasi setelah daftar PT.
      */

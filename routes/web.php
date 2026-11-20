@@ -54,6 +54,7 @@ Route::middleware(['web', 'auth', 'pdf.tenant'])->prefix('pdf')->name('pdf.')->g
     Route::prefix('{tenant:slug}')->group(function () {
         Route::get('/trial-balance', [PdfController::class, 'trialBalance'])->name('trial-balance');
         Route::get('/general-ledger', [PdfController::class, 'generalLedger'])->name('general-ledger');
+        Route::get('/daily-report', [PdfController::class, 'dailyReport'])->name('daily-report');
         Route::get('/income-statement', [PdfController::class, 'incomeStatement'])->name('income-statement');
         Route::get('/income-statement-matrix', [PdfController::class, 'incomeStatementMatrix'])->name('income-statement-matrix');
         Route::get('/income-statement-by-asset', [PdfController::class, 'incomeStatementByAsset'])->name('income-statement-by-asset');

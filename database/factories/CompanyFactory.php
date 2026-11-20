@@ -25,7 +25,9 @@ class CompanyFactory extends Factory
             'fiscal_start' => now()->startOfYear()->toDateString(),
             'fiscal_end'   => now()->endOfYear()->toDateString(),
             'address'      => fake()->address(),
-            'phone'        => fake()->phoneNumber(),
+            // Format Indonesia — phoneNumber() kadang berekstensi "x123" yang
+            // ditolak validasi ->tel() form Profil PT → test acak gagal.
+            'phone'        => fake()->numerify('08##########'),
             'email'        => fake()->companyEmail(),
             'is_active'    => true,
         ];

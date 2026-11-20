@@ -253,10 +253,43 @@ class AccountsTable
                         });
                     }),
 
+                // Peran tebakan import sudah diperiksa & benar → hilangkan tanda ⚠
+                // (dulu hanya hilang bila catatan dihapus manual).
+                Action::make('confirm_role')
+                    ->label('Peran Benar')
+                    ->icon(Heroicon::OutlinedCheckBadge)
+                    ->color('success')
+                    ->tooltip('Peran hasil tebakan import sudah diperiksa dan benar')
+                    ->visible($isGuessed)
+                    ->authorize(fn (Account $record): bool => auth()->user()?->can('update', $record) ?? false)
+                    ->action(function (Account $record) {
+                        $record->update(['notes' => CoaImportService::stripGuessedNote($record->notes)]);
+                        \Filament\Notifications\Notification::make()->success()->title("Peran {$record->code} dikonfirmasi")->send();
+                    }),
+
                 EditAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    \Filament\Actions\BulkAction::make('confirm_roles')
+                        ->label('Tandai Peran Sudah Diperiksa')
+                        ->icon(Heroicon::OutlinedCheckBadge)
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalDescription('Tanda "Peran hasil tebakan import" pada akun terpilih dihapus. Pastikan Peran-nya sudah benar.')
+                        ->authorize(fn (): bool => auth()->user()?->can('create', Account::class) ?? false)
+                        ->action(function ($records) {
+                            $n = 0;
+                            foreach ($records as $record) {
+                                if (str_contains((string) $record->notes, CoaImportService::GUESSED_ROLE_PREFIX)
+                                    && auth()->user()->can('update', $record)) {
+                                    $record->update(['notes' => CoaImportService::stripGuessedNote($record->notes)]);
+                                    $n++;
+                                }
+                            }
+                            \Filament\Notifications\Notification::make()->success()->title("{$n} akun dikonfirmasi")->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     DeleteBulkAction::make(),
                 ]),
             ]);

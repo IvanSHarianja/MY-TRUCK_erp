@@ -31,7 +31,9 @@ Aksi **Tagih Termin** → isi **Persen Termin (%)** dari nilai kontrak. Invoice 
 Buka proyek → tab **Pemakaian Unit Harian** → **Catat Pemakaian**, setiap hari unit bekerja di proyek: unit, operator/supir, **jam kerja** (alat berat) atau **jumlah rit** (truk), solar (liter), gaji, uang makan, premi/uang jalan, lain-lain, dan kas pembayar.
 
 - Biaya langsung dijurnal ke lini **Borongan** dan ditandai unitnya (ikut **Laba Rugi per Unit**).
-- Unit dengan penyusutan **per jam / per rit / per hari** ikut disusutkan sesuai pemakaiannya di proyek.
+- Unit dengan penyusutan **per jam / per rit** ikut disusutkan sesuai pemakaiannya di proyek (masuk Laporan Margin Proyek).
+- Unit **garis lurus** dan **per hari** disusutkan lewat penyusutan bulanan (per hari = semua hari kalender), jadi tidak disusutkan lagi per catatan dan belum dialokasikan ke margin proyek.
+- Gaji operator yang sudah dibayar lewat penggajian bulanan **jangan diisi lagi** di catatan harian — biayanya akan terhitung dua kali. Isi gaji di sini hanya untuk upah harian.
 - Mengubah atau menghapus catatan membatalkan jurnal lamanya lalu memposting ulang.
 - Di **Arus Kas (Format LAK)** biayanya masuk seksi *Pengeluaran Borongan*: BBM, Operator & Supir, serta Premi & Uang Makan.
 - **Backup Excel (SOP) Proyek** memuat sheet tambahan **"Pemakaian Unit"** berisi semua catatan dalam periode.

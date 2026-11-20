@@ -86,6 +86,21 @@ class PdfController extends Controller
         return $pdf->stream("Buku-Besar-{$tenant->slug}-{$dari->format('Ymd')}-{$sampai->format('Ymd')}.pdf");
     }
 
+    /** Laporan Harian Keuangan untuk satu tanggal. */
+    public function dailyReport(Request $request, Company $tenant)
+    {
+        $data = $request->validate(['tanggal' => ['required', 'date']]);
+        $date = Carbon::parse($data['tanggal'])->startOfDay();
+
+        $pdf = Pdf::loadView('pdf.reports.daily-report', [
+            'company'     => $tenant,
+            'report'      => app(\App\Services\Accounting\DailyCashReportService::class)->build($tenant->id, $date),
+            'periodLabel' => $date->translatedFormat('l, d F Y'),
+        ])->setPaper('a4', 'portrait');
+
+        return $pdf->stream("Laporan-Harian-{$tenant->slug}-{$date->format('Ymd')}.pdf");
+    }
+
     /**
      * Filter Buku Besar dari query string. Akun wajib milik PT ini (IDOR).
      *

@@ -23,7 +23,8 @@ use Illuminate\Validation\ValidationException;
  *   1. Jurnal biaya "BKK-PU-{id}": Dr BBM / Gaji / Uang makan / Premi / Lain
  *      (sesuai Peran akun) / Cr Kas — lini BONG, ditandai unit, source = log.
  *   2. Penyusutan pemakaian "DEPUSE-{aset}-PU{id}" bila metode aset per jam /
- *      per rit / per hari (jam_kerja / rit_count / 1 hari).
+ *      per rit (jam_kerja / rit_count). Aset garis lurus & per hari disusutkan
+ *      bulanan oleh DepreciationService (tidak dialokasikan ke proyek).
  * Ubah log = batalkan (void) kedua jurnal lalu posting ulang. Hapus = void.
  * Tanggal di periode tertutup ditolak di depan.
  */
@@ -92,6 +93,9 @@ class ProjectUnitLogService
         // Guard tenant di service (form bisa dilewati).
         $asset = Asset::withoutGlobalScopes()->where('company_id', $company->id)->find($data['asset_id'] ?? 0)
             ?? throw ValidationException::withMessages(['asset_id' => 'Unit tidak ditemukan di PT ini.']);
+        if ($asset->status === 'non_aktif') {
+            throw ValidationException::withMessages(['asset_id' => "Unit {$asset->asset_code} sudah non-aktif (dijual / dipensiunkan)."]);
+        }
         $operatorId = null;
         if (! empty($data['operator_id'])) {
             $operatorId = Employee::withoutGlobalScopes()->where('company_id', $company->id)->whereKey($data['operator_id'])->value('id')
@@ -132,7 +136,8 @@ class ProjectUnitLogService
             $cash = ! empty($data['cash_account_id'])
                 ? Account::withoutGlobalScopes()->where('company_id', $company->id)->find($data['cash_account_id'])
                 : Account::findByRoleOrCode(\App\Enums\AccountRole::Cash, '111100', $company->id);
-            if (! $cash || ! $cash->isPostable()) {
+            // Harus benar-benar akun kas/bank (form membatasi, service juga — form bisa dilewati).
+            if (! $cash || ! $cash->isPostable() || ! in_array((int) $cash->id, array_map('intval', Account::cashAccountIds($company->id)), true)) {
                 throw ValidationException::withMessages(['cash_account_id' => 'Pilih akun kas/bank (sub-akun) untuk membayar biaya.']);
             }
             $attrs['cash_account_id'] = $cash->id;
@@ -204,10 +209,12 @@ class ProjectUnitLogService
         // Penyusutan pemakaian (aset per jam / rit / hari). Nomor dokumen memuat
         // waktu posting supaya posting ulang setelah ubah log tidak bentrok
         // dengan jurnal lama yang sudah di-void (cek idempoten per nomor).
+        // Per HARI tidak di sini: DepreciationService sudah menyusutkannya tiap
+        // bulan untuk SEMUA hari kalender (time-based). Dulu log proyek menambah
+        // 1 hari lagi per catatan → penyusutan dobel.
         $usage = match ($asset->depreciation_method) {
             DepreciationMethod::PerHour => (float) $log->jam_kerja,
             DepreciationMethod::PerRit  => (float) $log->rit_count,
-            DepreciationMethod::PerDay  => 1.0,
             default                     => 0.0,
         };
         if ($usage > 0) {

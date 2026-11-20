@@ -18,7 +18,7 @@ Klik **Import Excel** di halaman Armada & Alat Berat, unggah daftar aset perusah
 
 - Semua aset hasil import memakai **garis lurus 8 tahun**. Ubah per aset bila perlu, sebelum ada jurnal penyusutan.
 - Kode, nopol, atau (untuk unit tanpa keduanya) nama yang **sudah ada dilewati**, jadi import aman diulang.
-- Setelah import, nyalakan filter **Perlu dilengkapi** di daftar aset. Tanda hilang sendiri begitu harga/tanggal beli diisi lewat **Edit**.
+- Setelah import, nyalakan filter **Perlu dilengkapi** di daftar aset. Tanda hilang sendiri begitu harga/tanggal beli diisi lewat **Edit**. Bila tanggal/harga hasil import ternyata sudah benar, klik **Data Benar** di baris aset.
 
 > Import hanya mengisi **data unit**. Nilai buku aset lama (akumulasi penyusutan sebelum memakai MY-TRUCK) dicatat lewat jurnal **Saldo Awal** — lihat [Pengaturan Awal](#pengaturan-awal).
 

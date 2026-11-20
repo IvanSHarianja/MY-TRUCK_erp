@@ -77,6 +77,21 @@ class AssetsTable
                     ]),
             ])
             ->recordActions([
+                // Tanggal beli hasil import yang ternyata sudah benar tidak pernah
+                // "diubah", jadi tanda ⚠ tidak hilang sendiri — konfirmasi di sini.
+                \Filament\Actions\Action::make('mark_complete')
+                    ->label('Data Benar')
+                    ->icon(\Filament\Support\Icons\Heroicon::OutlinedCheckBadge)
+                    ->color('success')
+                    ->visible(fn (Asset $record): bool => str_contains((string) $record->notes, AssetImportService::INCOMPLETE_MARKER)
+                        && (float) $record->purchase_price > 0)
+                    ->authorize(fn (Asset $record): bool => auth()->user()?->can('update', $record) ?? false)
+                    ->requiresConfirmation()
+                    ->modalDescription(fn (Asset $record): string => 'Tanggal beli ' . $record->purchase_date?->translatedFormat('d F Y')
+                        . ' dan harga beli Rp ' . number_format((float) $record->purchase_price, 0, ',', '.') . ' sudah benar?')
+                    ->action(fn (Asset $record) => $record->update([
+                        'notes' => AssetImportService::resolveIncompleteNote($record->notes, priceFilled: true, dateChanged: true),
+                    ])),
                 EditAction::make(),
             ])
             ->toolbarActions([

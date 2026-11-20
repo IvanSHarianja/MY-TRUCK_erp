@@ -109,6 +109,43 @@ class ProjectUnitLogTest extends TestCase
         $this->assertSame(0, ProjectUnitLog::count());
     }
 
+    public function test_aset_per_hari_tidak_disusutkan_dobel_oleh_log_proyek(): void
+    {
+        // Per hari: 100jt / 1000 hari = 100rb/hari, disusutkan bulanan untuk semua hari kalender.
+        $wl = Asset::create([
+            'company_id' => $this->company->id, 'asset_code' => 'WL-01', 'name' => 'Wheel Loader', 'type' => 'wheel_loader',
+            'purchase_date' => '2024-01-01', 'purchase_price' => 100_000_000, 'salvage_value' => 0,
+            'depreciation_method' => DepreciationMethod::PerDay->value, 'useful_life_days' => 1000, 'status' => 'aktif',
+        ]);
+        $this->svc()->create($this->project, ['log_date' => now()->toDateString(), 'asset_id' => $wl->id, 'jam_kerja' => 8, 'gaji' => 100_000]);
+        $this->svc()->create($this->project, ['log_date' => now()->toDateString(), 'asset_id' => $wl->id, 'jam_kerja' => 4]);
+
+        $this->assertSame(0, JournalEntry::where('document_number', 'like', "DEPUSE-{$wl->id}-%")->count(), 'tidak ada penyusutan per log');
+
+        app(\App\Services\Accounting\DepreciationService::class)->runForCompany($this->company, (int) now()->year, (int) now()->month);
+        $total = (float) JournalEntry::where('status', 'posted')
+            ->where(fn ($q) => $q->where('document_number', 'like', "DEP-{$wl->id}-%")->orWhere('document_number', 'like', "DEPUSE-{$wl->id}-%"))
+            ->sum('total_amount');
+        $this->assertEquals(100_000 * now()->daysInMonth, $total, 'hanya penyusutan bulanan per hari kalender');
+    }
+
+    public function test_kas_harus_akun_kas_dan_unit_non_aktif_ditolak(): void
+    {
+        $nonKas = $this->postableAccount($this->company, '552500');
+        $this->truk->update(['status' => 'non_aktif']);
+        foreach ([
+            'akun bukan kas' => ['asset_id' => $this->excavator->id, 'jam_kerja' => 5, 'gaji' => 100_000, 'cash_account_id' => $nonKas->id],
+            'unit non-aktif' => ['asset_id' => $this->truk->id, 'rit_count' => 3],
+        ] as $name => $data) {
+            try {
+                $this->svc()->create($this->project, $data + ['log_date' => now()->toDateString()]);
+                $this->fail("{$name} seharusnya ditolak");
+            } catch (ValidationException) {
+            }
+        }
+        $this->assertSame(0, ProjectUnitLog::count());
+    }
+
     public function test_margin_proyek_dari_termin_dikurangi_biaya_unit(): void
     {
         $this->svc()->create($this->project, [
