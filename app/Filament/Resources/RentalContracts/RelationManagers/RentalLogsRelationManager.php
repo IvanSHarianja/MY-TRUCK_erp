@@ -181,7 +181,7 @@ class RentalLogsRelationManager extends RelationManager
                     ->step(0.1)
                     ->suffix('L')
                     ->live(onBlur: true)
-                    ->helperText('Isi bila mau catat actual pemakaian. Bila override_biaya=OFF, nilai ini hanya sebagai catatan (tidak dipakai kalkulasi jurnal).')
+                    ->helperText('Liter yang benar-benar dipakai (catatan operasional). Bila "Biaya hari ini berbeda" aktif, dipakai untuk perkiraan biaya di bawah.')
                     ->columnSpan(1),
 
                 TextInput::make('voucher_solar')
@@ -191,8 +191,8 @@ class RentalLogsRelationManager extends RelationManager
                     ->columnSpan(1),
 
                 Toggle::make('override_biaya')
-                    ->label('Override biaya operasional')
-                    ->helperText('Aktifkan bila biaya hari ini berbeda dari standar kontrak.')
+                    ->label('Biaya hari ini berbeda dari standar kontrak')
+                    ->helperText('Hanya mengubah perkiraan. Biaya tidak dijurnal dari sini — keuangan mencatat biaya yang benar-benar dibayar di menu Transaksi & Beban (pilih unitnya).')
                     ->default(false)
                     ->live()
                     ->columnSpanFull(),
@@ -212,7 +212,7 @@ class RentalLogsRelationManager extends RelationManager
                     ->columnSpan(1),
 
                 Placeholder::make('cost_preview')
-                    ->label('Preview Biaya Operasional')
+                    ->label('Perkiraan Biaya (standar kontrak, tidak dijurnal)')
                     ->content(function ($livewire, Get $get): HtmlString {
                         $contract = $livewire->getOwnerRecord();
                         if (! $contract) {

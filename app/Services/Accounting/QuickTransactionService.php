@@ -47,6 +47,7 @@ class QuickTransactionService
         ?string $description = null,
         ?string $method = null,
         ?string $buktiTfPath = null,
+        ?int $assetId = null,
     ): JournalEntry {
         if ($amount <= 0) {
             throw ValidationException::withMessages([
@@ -106,6 +107,24 @@ class QuickTransactionService
                 ->where('company_id', $company->id)
                 ->where('code', 'UMUM')
                 ->first();
+        }
+
+        // === Unit (aset) untuk Laba Rugi per Unit & Biaya Standar vs Aktual ===
+        $asset = null;
+        if ($assetId) {
+            if (! $type->allowsAsset()) {
+                throw ValidationException::withMessages([
+                    'asset_id' => "Transaksi {$type->label()} tidak dicatat per unit.",
+                ]);
+            }
+            $asset = \App\Models\Asset::withoutGlobalScopes()
+                ->where('company_id', $company->id)
+                ->find($assetId);
+            if (! $asset) {
+                throw ValidationException::withMessages([
+                    'asset_id' => 'Unit tidak valid untuk tenant ini.',
+                ]);
+            }
         }
 
         // === Beban HPP wajib dialokasikan ke lini bisnis operasional (bukan UMUM) ===
@@ -189,6 +208,8 @@ class QuickTransactionService
         $desc = $description !== null && trim($description) !== ''
             ? trim($description)
             : $type->label();
+        // Sama dengan jurnal maintenance: "[DT-001] ..." supaya terbaca di Buku Besar.
+        $lineDesc = $asset ? '[' . $asset->asset_code . '] ' . $desc : $desc;
 
         // Race-safe: createEntryWithLines retry pada unique constraint violation
         // bila entry_number bentrok dengan request concurrent.
@@ -215,7 +236,9 @@ class QuickTransactionService
             linesFactory: fn(JournalEntry $entry): array => [
                 [
                     'account_id' => $drAccountId,
-                    'description' => $desc,
+                    // Hanya sisi beban yang ditandai unit (kas bukan biaya unit).
+                    'asset_id' => $asset?->id,
+                    'description' => $lineDesc,
                     'debit' => $amount,
                     'kredit' => 0,
                 ],

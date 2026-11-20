@@ -82,16 +82,17 @@ class JournalCascadeSourceTest extends TestCase
         $this->assertSame($rentalLog->id, $depuse->source_id);
     }
 
-    public function test_void_bbk_rental_log_cascade_void_depuse_log_itu(): void
+    public function test_void_bbk_lama_rental_log_hanya_melepas_link_depuse_tetap(): void
     {
+        // Sejak 2026-11-20 BBK-RL hanya jurnal lama (biaya standar). Void-nya untuk
+        // diganti biaya aktual — unit tetap bekerja, jadi DEPUSE tidak ikut void.
         [$company, $user] = $this->tenant();
         $rentalLog = $this->makeRentalLogWithCost($company, $user);
         $bbk = JournalEntry::withoutGlobalScopes()->find($rentalLog->journal_entry_id);
 
-        app(JournalService::class)->void($bbk, 'Test cascade');
+        app(JournalService::class)->void($bbk, 'Diganti biaya aktual');
 
-        $this->assertSame('void', $this->depuseOf($company, $rentalLog)->status,
-            'DEPUSE harus ikut void saat BBK-RL milik log yang sama di-void');
+        $this->assertSame('posted', $this->depuseOf($company, $rentalLog)->status);
         $this->assertNull($rentalLog->refresh()->journal_entry_id);
     }
 
@@ -107,7 +108,8 @@ class JournalCascadeSourceTest extends TestCase
         $bbk = JournalEntry::withoutGlobalScopes()->find($rentalLog->journal_entry_id);
         app(JournalService::class)->void($bbk, 'Test cascade');
 
-        $this->assertSame('void', $this->depuseOf($company, $rentalLog)->status);
+        $this->assertNull($rentalLog->refresh()->journal_entry_id);
+        $this->assertSame('posted', $this->depuseOf($company, $rentalLog)->status);
         $this->assertSame('posted', $this->depuseOf($company, $ritLog)->status,
             'DEPUSE RitLog tidak boleh ikut void hanya karena id-nya sama dengan RentalLog');
     }
@@ -284,7 +286,10 @@ class JournalCascadeSourceTest extends TestCase
         ]);
     }
 
-    /** RentalLog all-in (ada biaya BBM → BBK-RL) di aset per_hour (→ DEPUSE). */
+    /**
+     * RentalLog di aset per_hour (→ DEPUSE) + jurnal biaya standar LAMA "BBK-RL-{id}"
+     * yang ter-link ke log (data sebelum 2026-11-20; log baru tidak lagi membuatnya).
+     */
     private function makeRentalLogWithCost(Company $company, User $user): RentalLog
     {
         $asset = $this->makeAsset($company, DepreciationMethod::PerHour);
@@ -317,9 +322,19 @@ class JournalCascadeSourceTest extends TestCase
             'created_by'         => $user->id,
         ])->refresh();
 
-        $this->assertNotNull($log->journal_entry_id, 'Prasyarat: RentalLog all-in harus menghasilkan BBK-RL');
+        $this->assertNull($log->journal_entry_id, 'Log baru tidak lagi menjurnal biaya standar');
 
-        return $log;
+        $legacy = app(JournalService::class)->post($this->makeJournalEntry(
+            $company,
+            [
+                ['account_id' => $this->postableAccount($company, '551100')->id, 'asset_id' => $asset->id, 'debit' => 1_000_000, 'kredit' => 0],
+                ['account_id' => $this->postableAccount($company, '111100')->id, 'debit' => 0, 'kredit' => 1_000_000],
+            ],
+            ['document_number' => 'BBK-RL-' . $log->id, 'document_type' => 'bkk'],
+        ));
+        RentalLog::withoutEvents(fn () => $log->update(['journal_entry_id' => $legacy->id]));
+
+        return $log->refresh();
     }
 
     /** RitLog di aset per_rit (→ DEPUSE) dengan id dipaksa sama dengan RentalLog. */

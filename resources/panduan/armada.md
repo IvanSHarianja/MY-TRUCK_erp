@@ -21,7 +21,7 @@ Tipe kontrak menentukan biaya operasional yang ditanggung PT:
 | **Semi** | Supir saja (BBM dari klien) |
 | **Alat Saja** | Tidak ada — klien menanggung semua |
 
-Isi standar biaya (liter BBM per rit, gaji & uang makan supir per hari, uang jalan, premi per rit) agar biaya harian terhitung otomatis. Biaya ini dihitung dari **rit dan hari**, apa pun satuan tarifnya.
+Isi standar biaya (liter BBM per rit, gaji & uang makan supir per hari, uang jalan, premi per rit) sebagai **perkiraan / pembanding**. Standar ini dihitung dari **rit dan hari**, apa pun satuan tarifnya, dan **tidak dijurnal** — lihat bagian *Biaya: standar vs aktual* di bawah.
 
 ### 2. Input log harian
 
@@ -32,7 +32,17 @@ Buka kontrak → tab **Log Harian** → **Input Ritase**. Pilih tanggal, **Dump 
 - **Per Ton**: isi **Jumlah Rit** dan **Tonase** dari tiket timbang — tonase inilah yang ditagih.
 - **Per Hari**: pilih **1 hari penuh** atau **½ hari**. Jumlah rit boleh **0** bila unit standby (tetap dibayar per hari).
 
-Biaya operasional langsung dijurnal — cek di **Preview Biaya Operasional**. Gunakan **Override biaya operasional** bila uang jalan/solar aktual berbeda dari standar.
+Log harian **tidak menjurnal biaya**. **Perkiraan Biaya** di form hanya menampilkan biaya standar kontrak; aktifkan **Biaya hari ini berbeda dari standar kontrak** bila ingin perkiraan memakai angka hari itu.
+
+### Biaya: standar vs aktual
+
+Laba Rugi memakai **biaya yang benar-benar dikeluarkan perusahaan**, bukan tarif biaya di kontrak.
+
+1. Saat membayar solar, gaji/uang makan, atau uang jalan & premi supir, catat di **Transaksi & Beban** sebesar yang dibayar, dari rekening yang dipakai.
+2. Pilih **Lini Bisnis** *ARMD* dan **Unit** dump truck-nya, supaya biaya masuk ke **Laba Rugi per Unit**. Pembayaran untuk beberapa unit sekaligus: catat per unit.
+3. Pantau di laporan **Biaya Standar vs Aktual**: per unit per bulan, standar kontrak dibanding biaya aktual. Selisih merah berarti biaya lebih besar dari standar.
+
+> Jurnal biaya lama bernomor **BBK-RT-…** (dibuat otomatis dari log sebelum aturan ini) tetap tercatat. Bila biaya aktual bulan yang sama juga sudah dicatat, void jurnal BBK-RT tersebut di **Jurnal Umum** supaya tidak terhitung dua kali. Penyusutan per rit unit tidak ikut batal.
 
 ### 3. Mobilisasi alat berat
 

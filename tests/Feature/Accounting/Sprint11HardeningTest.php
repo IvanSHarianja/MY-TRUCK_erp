@@ -123,89 +123,19 @@ class Sprint11HardeningTest extends TestCase
     }
 
     // ============================================================
-    // MEDIUM-2: edit RentalLog.asset_id → BBK void+repost tag baru
+    // Sejak 2026-11-20: log tidak lagi menjurnal biaya standar kontrak
+    // (MEDIUM-2 re-tag BBK tidak relevan lagi — biaya aktual ditandai unit
+    // oleh keuangan di Transaksi & Beban).
     // ============================================================
 
-    public function test_medium2_edit_asset_id_rental_log_bbk_re_tag_ke_asset_baru(): void
+    public function test_rental_log_all_in_tidak_menjurnal_biaya_standar(): void
     {
         $company = $this->createTenant();
         $user    = $this->createTenantUser($company);
         $this->actingAs($user);
 
-        $client  = $this->createClient($company);
-
-        $assetA = $this->makeAsset($company, ['asset_code' => 'AST-A']);
-        $assetB = $this->makeAsset($company, ['asset_code' => 'AST-B']);
-
-        // Contract dengan asset A initially
-        $contract = $this->makeAllInContract($company, $assetA, $client, $user);
-
-        // Create rental log 10 jam → BBK terbentuk tag asset A
-        $log = RentalLog::create([
-            'company_id'         => $company->id,
-            'rental_contract_id' => $contract->id,
-            'asset_id'           => $assetA->id,
-            'log_date'           => '2026-08-05',
-            'hm_awal'            => 100,
-            'hm_akhir'           => 110,
-            'jam_kerja'          => 10,
-            'created_by'         => $user->id,
-        ]);
-
-        // BBK original tag asset A
-        $bbkOriginal = JournalEntry::withoutGlobalScopes()
-            ->where('document_number', 'BBK-RL-' . $log->id)
-            ->where('status', 'posted')
-            ->with('lines')
-            ->first();
-
-        $this->assertNotNull($bbkOriginal, 'BBK original harus ada');
-        $lineAssetIds = $bbkOriginal->lines->pluck('asset_id')->filter()->unique()->values()->all();
-        $this->assertSame([$assetA->id], $lineAssetIds,
-            'BBK original: cost lines harus tag asset A'
-        );
-
-        // Edit log: swap ke asset B (jam tetap 10)
-        $log->update(['asset_id' => $assetB->id]);
-
-        // BBK original → void
-        $this->assertSame('void', $bbkOriginal->fresh()->status,
-            'BBK original harus void setelah asset_id log berubah'
-        );
-
-        // BBK baru posted tag asset B — cari via journal_entry_id log
-        $log->refresh();
-        $bbkNew = JournalEntry::withoutGlobalScopes()
-            ->where('id', $log->journal_entry_id)
-            ->where('status', 'posted')
-            ->with('lines')
-            ->first();
-
-        $this->assertNotNull($bbkNew, 'BBK baru harus ada setelah repost');
-        $newLineAssetIds = $bbkNew->lines->pluck('asset_id')->filter()->unique()->values()->all();
-        $this->assertSame([$assetB->id], $newLineAssetIds,
-            'BBK baru: cost lines harus tag asset B (bukan A lagi)'
-        );
-
-        // Total amount BBK sama (jam tidak berubah)
-        $this->assertSame(
-            (float) $bbkOriginal->total_amount,
-            (float) $bbkNew->total_amount,
-            'BBK amount tidak berubah — jam sama, hanya tag yang berubah'
-        );
-    }
-
-    public function test_medium2_edit_hanya_field_lain_tidak_trigger_bbk_repost(): void
-    {
-        // Kontrol test: kalau field yang tidak affect cost (mis. notes) berubah,
-        // BBK tidak boleh void+repost — waste operation.
-        $company = $this->createTenant();
-        $user    = $this->createTenantUser($company);
-        $this->actingAs($user);
-
-        $client  = $this->createClient($company);
-        $asset   = $this->makeAsset($company);
-        $contract = $this->makeAllInContract($company, $asset, $client, $user);
+        $asset    = $this->makeAsset($company);
+        $contract = $this->makeAllInContract($company, $asset, $this->createClient($company), $user);
 
         $log = RentalLog::create([
             'company_id'         => $company->id,
@@ -213,24 +143,14 @@ class Sprint11HardeningTest extends TestCase
             'asset_id'           => $asset->id,
             'log_date'           => '2026-08-05',
             'hm_awal'            => 100,
-            'hm_akhir'            => 110,
+            'hm_akhir'           => 110,
             'jam_kerja'          => 10,
             'created_by'         => $user->id,
         ]);
+        $log->update(['asset_id' => $this->makeAsset($company, ['asset_code' => 'AST-B'])->id, 'jam_kerja' => 12]);
 
-        $log->refresh();
-        $bbkOriginalId = $log->journal_entry_id;
-
-        // Update field yang bukan cost field
-        $log->update(['notes' => 'catatan tambahan']);
-        $log->refresh();
-
-        // BBK tetap sama, tidak di-repost
-        $this->assertSame($bbkOriginalId, $log->journal_entry_id,
-            'Update notes tidak boleh void+repost BBK'
-        );
-
-        $bbk = JournalEntry::withoutGlobalScopes()->find($bbkOriginalId);
-        $this->assertSame('posted', $bbk->status);
+        $this->assertNull($log->refresh()->journal_entry_id);
+        $this->assertFalse(JournalEntry::withoutGlobalScopes()
+            ->where('document_number', 'like', 'BBK-RL-%')->exists());
     }
 }

@@ -114,6 +114,9 @@ class QuickTransaction extends Page implements HasForms, HasTable
                                 $allowed = $type->allowedMethods();
                                 $set('method', $allowed[0] ?? null);
                                 $set('counter_account_id', null);
+                                if (! $type->allowsAsset()) {
+                                    $set('asset_id', null);
+                                }
                             }),
 
                         Select::make('method')
@@ -186,6 +189,22 @@ class QuickTransaction extends Page implements HasForms, HasTable
                                 ->all())
                             ->required(),
 
+                        Select::make('asset_id')
+                            ->label('Unit (Armada / Alat Berat)')
+                            ->native(false)
+                            ->searchable()
+                            ->options(fn (): array => \App\Models\Asset::query()
+                                ->where('company_id', Filament::getTenant()->id)
+                                ->where(fn ($query) => $query->whereNull('type')->orWhere('type', '!=', 'peralatan_kantor'))
+                                ->orderBy('asset_code')
+                                ->get()
+                                ->mapWithKeys(fn (\App\Models\Asset $a) => [$a->id => "[{$a->asset_code}] {$a->name}"
+                                    . ($a->plate_number ? " — {$a->plate_number}" : '')])
+                                ->all())
+                            ->visible(fn (callable $get): bool => (bool) QuickTransactionType::tryFrom((string) $get('type'))?->allowsAsset())
+                            ->helperText('Isi bila biaya ini untuk satu unit tertentu (solar, gaji/uang jalan supir, servis) — '
+                                . 'masuk ke Laba Rugi per Unit dan laporan Biaya Standar vs Aktual. Biaya beberapa unit: catat per unit.'),
+
                         TextInput::make('amount')
                             ->label('Nominal (Rp)')
                             ->required()
@@ -239,6 +258,7 @@ class QuickTransaction extends Page implements HasForms, HasTable
                 description:    $state['description'] ?? null,
                 method:         $state['method'] ?? null,
                 buktiTfPath:    $state['bukti_tf_path'] ?? null,
+                assetId:        isset($state['asset_id']) ? (int) $state['asset_id'] : null,
             );
 
             Notification::make()
@@ -283,7 +303,7 @@ class QuickTransaction extends Page implements HasForms, HasTable
             ->query(fn () => JournalEntry::query()
                 ->where('company_id', Filament::getTenant()->id)
                 ->where('document_type', 'quick_tx')
-                ->with(['lines.account', 'businessUnit'])
+                ->with(['lines.account', 'lines.asset', 'businessUnit'])
                 ->latest('entry_date')
                 ->latest('id'))
             ->columns([
@@ -314,6 +334,12 @@ class QuickTransaction extends Page implements HasForms, HasTable
                         'BONG' => 'danger',
                         default => 'gray',
                     }),
+                TextColumn::make('unit')
+                    ->label('Unit')
+                    ->state(fn (JournalEntry $record): ?string => $record->lines->firstWhere('asset_id', '!=', null)?->asset?->asset_code)
+                    ->placeholder('—')
+                    ->badge()
+                    ->color('gray'),
                 TextColumn::make('total_amount')
                     ->label('Nominal')
                     ->money('IDR', locale: 'id')

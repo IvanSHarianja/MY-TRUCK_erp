@@ -58,7 +58,7 @@ Setiap kelompok aset tetap butuh **tiga akun sekaligus**: akun aset, akun akumul
 | Beban Premi & Uang Jalan (551200) | Beban Premi & Uang Jalan | Kontrak mengisi uang jalan atau premi |
 | Akumulasi Armada + Beban Penyusutan | lihat tabel aset tetap | Dump truck memakai penyusutan **Per Rit** |
 
-> **Penting untuk Rental & Armada:** bila akun beban BBM, gaji, atau premi tidak ada/nonaktif, jurnal biaya log saat ini tetap tercatat **tanpa sisi debit**, sehingga Neraca Saldo tidak balance. Pastikan paket akun ini lengkap **sebelum** input jam kerja atau ritase pertama.
+> **Rental & Armada:** akun beban BBM, gaji, dan premi & uang jalan dipakai saat keuangan mencatat biaya aktual di **Transaksi & Beban** (log ritase / jam kerja tidak menjurnal biaya). Bila akunnya tidak ada, transaksi **ditolak** dengan pesan yang menyebut akun yang kurang.
 
 **Penjualan Material (MATL)**
 
@@ -129,8 +129,6 @@ Lawannya adalah rekening Kas/Bank yang Anda pilih, atau akun utang vendor yang A
 | Fitur | Akibat |
 |---|---|
 | Invoice (Tagih, Tagih Termin, Terbitkan), Terima DP, Pembelian Material, pendapatan Penjualan Material, Transaksi & Beban | **Ditolak** dengan pesan yang menyebut akun yang kurang — aman, tinggal lengkapi akunnya lalu ulangi |
-| Biaya log jam kerja / ritase — akun **Kas** tidak ada | Jurnal biaya **dilewati tanpa pesan** — biaya tidak tercatat |
-| Biaya log jam kerja / ritase — akun **beban** tidak ada | Jurnal tercatat **tidak balance** (lihat peringatan di atas) |
 | Pemeliharaan aset | Jurnal biaya **dilewati tanpa pesan** |
 | HPP penjualan material | Jurnal HPP **dilewati** — laba kotor terlihat terlalu besar |
 | Penyusutan per jam / per rit | Jurnal penyusutan **dilewati tanpa pesan** |

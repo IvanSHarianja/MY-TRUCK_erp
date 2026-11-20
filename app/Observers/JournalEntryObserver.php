@@ -7,8 +7,6 @@ use App\Models\JournalEntry;
 use App\Models\Project;
 use App\Models\RentalLog;
 use App\Models\RitLog;
-use App\Services\Accounting\DepreciationService;
-use App\Services\Accounting\JournalService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -29,9 +27,8 @@ use Illuminate\Support\Facades\Log;
  *
  * Pattern yang di-handle:
  *   DP-{project_number}   → decrement Project.dp_diterima (source = Project)
- *   BBK-RL-{log_id}       → void DEPUSE log + nullify RentalLog.journal_entry_id
- *                            (log dicari via FK; log jadi "orphan", edit log
- *                            akan trigger observer repost)
+ *   BBK-RL-{log_id}       → nullify RentalLog.journal_entry_id (log via FK).
+ *                            Jurnal lama berisi biaya standar; DEPUSE tetap.
  *   BBK-RT-{log_id}       → idem untuk RitLog
  *   BBK-MT-{log_id}       → nullify AssetMaintenanceLog.journal_entry_id (FK)
  *   PB*                   → rollback stock + MAC (MaterialPurchase via FK)
@@ -246,58 +243,11 @@ class JournalEntryObserver
             return;
         }
 
-        // BUG-DEPUSE-01: BBK void tanpa cascade DEPUSE bikin akumulasi
-        // penyusutan usage-based overstate. Void jurnal DEPUSE dulu,
-        // baru nullify link log.
-        $this->cascadeVoidDepuseForLog($bbkEntry, $log);
+        // Sejak 2026-11-20 BBK-RL/RT hanya jurnal LAMA berisi biaya standar
+        // kontrak; men-void-nya (diganti biaya aktual dari keuangan) tidak
+        // berarti unitnya tidak bekerja — penyusutan pemakaian (DEPUSE) tetap.
+        // DEPUSE ikut di-void hanya bila lognya dihapus (lihat observer log).
         $this->nullifyLogJournal($log->getTable(), $bbkEntry->id);
-    }
-
-    /**
-     * BUG-DEPUSE-01: Void semua jurnal DEPUSE milik log yang jurnal BBK-nya
-     * sedang di-void.
-     *
-     * Kenapa perlu:
-     * BBK-RL / BBK-RT adalah jurnal biaya operasional per log (BBM, uang jalan).
-     * Log yang sama juga menghasilkan DEPUSE-{asset}-{log} kalau aset pakai method
-     * usage-based (per_hour / per_rit). Kalau BBK di-void tapi DEPUSE tidak,
-     * akumulasi penyusutan overstate — biaya usage sudah dibalik tapi penyusutan
-     * usage-nya masih tercatat.
-     *
-     * DEPUSE dicari via source jurnal = log ini. Pola teks 'DEPUSE-%-{log_id}'
-     * tidak dipakai lagi karena RentalLog dan RitLog ber-id sama saling tangkap.
-     *
-     * Strategi error: THROW kalau salah satu DEPUSE gagal di-void (mis. period
-     * DEPUSE sudah closed). Silent-skip di sini bikin akumulasi overstate senyap.
-     * Transaction outer akan rollback BBK void juga — user perlu buka period dulu.
-     */
-    private function cascadeVoidDepuseForLog(JournalEntry $bbkEntry, RentalLog|RitLog $log): void
-    {
-        $depuseJournals = app(DepreciationService::class)->postedUsageJournalsFor($log);
-
-        if ($depuseJournals->isEmpty()) {
-            return;
-        }
-
-        $journalService = app(JournalService::class);
-
-        foreach ($depuseJournals as $depuse) {
-            try {
-                $journalService->void(
-                    $depuse,
-                    'Auto-cascade dari void ' . $bbkEntry->entry_number,
-                );
-            } catch (\Throwable $e) {
-                throw new \RuntimeException(sprintf(
-                    'Cascade void gagal: jurnal DEPUSE %s tidak bisa di-void saat void %s. '
-                    . 'Detail: %s. '
-                    . 'Kemungkinan periode DEPUSE sudah ditutup — buka periode dulu.',
-                    $depuse->entry_number,
-                    $bbkEntry->entry_number,
-                    $e->getMessage(),
-                ), 0, $e);
-            }
-        }
     }
 
     /**

@@ -18,7 +18,7 @@ use Tests\TestCase;
 /**
  * Regression test untuk 2 bug DEPUSE HIGH yang di-fix:
  *
- *  BUG-DEPUSE-01: void BBK-RL / BBK-RT tidak cascade DEPUSE — akumulasi overstate.
+ *  BUG-DEPUSE-01: DEPUSE harus ikut void saat log-nya dihapus (BBK-RL/RT tidak lagi dibuat).
  *  BUG-DEPUSE-04: aset PerDay tidak pernah didepresiasi (skip di cron + skip di observer).
  */
 class DepuseBugFixTest extends TestCase
@@ -29,12 +29,11 @@ class DepuseBugFixTest extends TestCase
     // BUG-DEPUSE-01: Cascade void DEPUSE saat BBK di-void
     // ================================================================
 
-    // Catatan: dua test cascade di bawah dulu memakai jurnal MANUAL ber-No. Bukti
-    // "BBK-RL-42" / "DEPUSE-x-42" untuk mensimulasikan log. Sejak cascade lewat
-    // link struktural (FK log.journal_entry_id + journal_entries.source_*), jurnal
-    // manual sengaja tidak ter-cascade — test memakai RentalLog/RitLog asli.
+    // Sejak 2026-11-20 log tidak lagi membuat jurnal biaya BBK-RL / BBK-RT
+    // (biaya dicatat aktual oleh keuangan). DEPUSE tetap per log, dan ikut
+    // di-void saat lognya dihapus. Void jurnal BBK lama: JournalCascadeSourceTest.
 
-    public function test_void_bbk_rl_cascades_void_to_related_depuse(): void
+    public function test_rental_log_tanpa_bbk_depuse_tetap_dan_ikut_void_saat_log_dihapus(): void
     {
         $company = $this->createTenant();
         $user    = $this->createTenantUser($company);
@@ -51,7 +50,7 @@ class DepuseBugFixTest extends TestCase
             'contract_number'     => 'RC-' . strtoupper(bin2hex(random_bytes(3))),
             'client_id'           => $this->createClient($company)->id,
             'asset_id'            => $asset->id,
-            'tipe_rental'         => 'all_in', // ada biaya BBM → BBK-RL
+            'tipe_rental'         => 'all_in',
             'bbm_liter_per_jam'   => 10,
             'harga_bbm_per_liter' => 10_000,
             'tarif_per_jam'       => 500_000,
@@ -71,17 +70,18 @@ class DepuseBugFixTest extends TestCase
             'created_by'         => $user->id,
         ])->refresh();
 
-        $bbk    = JournalEntry::withoutGlobalScopes()->findOrFail($log->journal_entry_id);
+        $this->assertNull($log->journal_entry_id, 'Biaya standar tidak lagi dijurnal');
+        $this->assertFalse(JournalEntry::withoutGlobalScopes()->where('document_number', 'BBK-RL-' . $log->id)->exists());
+
         $depuse = $this->depuseFor($asset, $log->id);
         $this->assertSame('posted', $depuse->status);
 
-        // Aksi: void BBK-RL — cascade DEPUSE harus ikut jalan
-        app(JournalService::class)->void($bbk, 'Test cascade');
+        $log->delete();
 
-        $this->assertSame('void', $depuse->refresh()->status, 'DEPUSE harus ikut void saat BBK-RL di-void (cascade)');
+        $this->assertSame('void', $depuse->refresh()->status, 'DEPUSE ikut void saat log dihapus');
     }
 
-    public function test_void_bbk_rt_cascades_void_to_related_depuse(): void
+    public function test_rit_log_tanpa_bbk_depuse_tetap_dan_ikut_void_saat_log_dihapus(): void
     {
         $company = $this->createTenant();
         $user    = $this->createTenantUser($company);
@@ -97,7 +97,7 @@ class DepuseBugFixTest extends TestCase
             'company_id'          => $company->id,
             'contract_number'     => 'AC-' . strtoupper(bin2hex(random_bytes(3))),
             'client_id'           => $this->createClient($company)->id,
-            'tipe_kontrak'        => 'all_in', // ada biaya BBM → BBK-RT
+            'tipe_kontrak'        => 'all_in',
             'bbm_liter_per_rit'   => 20,
             'harga_bbm_per_liter' => 10_000,
             'route_description'   => 'Quarry - Proyek',
@@ -116,11 +116,11 @@ class DepuseBugFixTest extends TestCase
             'created_by'         => $user->id,
         ])->refresh();
 
-        $bbk    = JournalEntry::withoutGlobalScopes()->findOrFail($log->journal_entry_id);
+        $this->assertNull($log->journal_entry_id);
         $depuse = $this->depuseFor($asset, $log->id);
         $this->assertSame('posted', $depuse->status);
 
-        app(JournalService::class)->void($bbk, 'Test cascade');
+        $log->delete();
 
         $this->assertSame('void', $depuse->refresh()->status);
     }

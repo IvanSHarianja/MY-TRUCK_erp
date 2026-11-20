@@ -19,6 +19,7 @@ enum QuickTransactionType: string
     // === BEBAN OPERASIONAL & HPP ===
     case BebanSolar       = 'beban_solar';
     case BebanGaji        = 'beban_gaji';
+    case BebanUangJalan   = 'beban_uang_jalan';
     case BebanSparepart   = 'beban_sparepart';
     case BebanMob         = 'beban_mob';
     case BebanSubkon      = 'beban_subkon';
@@ -37,6 +38,7 @@ enum QuickTransactionType: string
         return match ($this) {
             self::BebanSolar      => 'Beban Solar / BBM',
             self::BebanGaji       => 'Beban Gaji & Tunjangan',
+            self::BebanUangJalan  => 'Beban Uang Jalan & Premi Supir/Operator',
             self::BebanSparepart  => 'Beban Maintenance & Sparepart',
             self::BebanMob        => 'Beban Mobilisasi / Demobilisasi',
             self::BebanSubkon     => 'Beban Subkontraktor',
@@ -56,6 +58,7 @@ enum QuickTransactionType: string
         return match ($this) {
             self::BebanSolar      => '551100',
             self::BebanGaji       => '552200',
+            self::BebanUangJalan  => '551200',
             self::BebanSparepart  => '551400',
             self::BebanMob        => '551500',
             self::BebanSubkon     => '551600',
@@ -79,6 +82,7 @@ enum QuickTransactionType: string
         return match ($this) {
             self::BebanSolar      => AccountRole::CogsBbm,
             self::BebanGaji       => AccountRole::OpexGaji,
+            self::BebanUangJalan  => AccountRole::CogsPremiUangJalan,
             self::BebanSparepart  => AccountRole::CogsMaintenance,
             self::BebanMob        => AccountRole::CogsMobilisasi,
             self::BebanSubkon     => AccountRole::CogsSubkontraktor,
@@ -101,7 +105,7 @@ enum QuickTransactionType: string
     public function fixedSide(): string
     {
         return match ($this) {
-            self::BebanSolar, self::BebanGaji, self::BebanSparepart, self::BebanMob,
+            self::BebanSolar, self::BebanGaji, self::BebanUangJalan, self::BebanSparepart, self::BebanMob,
             self::BebanSubkon, self::BebanRetribusi, self::BebanKantor,
             self::BebanPenyusutan, self::Prive       => 'debit',
             self::PendapatanLain, self::SetorModal   => 'kredit',
@@ -120,7 +124,7 @@ enum QuickTransactionType: string
     public function allowedMethods(): array
     {
         return match ($this) {
-            self::BebanSolar, self::BebanSparepart, self::BebanMob,
+            self::BebanSolar, self::BebanUangJalan, self::BebanSparepart, self::BebanMob,
             self::BebanSubkon, self::BebanKantor    => ['kas', 'bank', 'utang'],
 
             self::BebanGaji, self::BebanRetribusi,
@@ -128,6 +132,19 @@ enum QuickTransactionType: string
             self::SetorModal, self::Prive           => ['kas', 'bank'],
 
             self::BebanPenyusutan                    => ['nonkas'],
+        };
+    }
+
+    /**
+     * Beban yang bisa ditandai ke satu unit (armada / alat berat) supaya masuk
+     * Laba Rugi per Unit dan laporan Biaya Standar vs Aktual.
+     */
+    public function allowsAsset(): bool
+    {
+        return match ($this) {
+            self::BebanSolar, self::BebanGaji, self::BebanUangJalan,
+            self::BebanSparepart, self::BebanMob, self::BebanSubkon => true,
+            default => false,
         };
     }
 
@@ -173,7 +190,7 @@ enum QuickTransactionType: string
     public function isBebanHpp(): bool
     {
         return match ($this) {
-            self::BebanSolar, self::BebanSparepart,
+            self::BebanSolar, self::BebanUangJalan, self::BebanSparepart,
             self::BebanMob,   self::BebanSubkon => true,
             default                              => false,
         };
@@ -185,7 +202,7 @@ enum QuickTransactionType: string
     public function documentPrefix(): string
     {
         return match ($this) {
-            self::BebanSolar, self::BebanGaji, self::BebanSparepart, self::BebanMob,
+            self::BebanSolar, self::BebanGaji, self::BebanUangJalan, self::BebanSparepart, self::BebanMob,
             self::BebanSubkon, self::BebanRetribusi, self::BebanKantor      => 'BBK', // bukti bank/kas keluar
             self::BebanPenyusutan                                            => 'JM',  // jurnal memorial
             self::PendapatanLain, self::SetorModal                           => 'BKM', // bukti kas masuk
